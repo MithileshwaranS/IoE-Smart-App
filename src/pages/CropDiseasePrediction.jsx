@@ -75,10 +75,13 @@ const CropDiseasePrediction = () => {
       const formData = new FormData();
       formData.append("image", selectedImage);
 
-      const response = await fetch("http://localhost:3001/api/predict", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        "https://ioe-smart-app.onrender.com/api/predict",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       const data = await response.json();
 
