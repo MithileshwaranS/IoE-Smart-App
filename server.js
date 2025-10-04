@@ -1,19 +1,41 @@
+import { promises as fsPromises } from "fs";
+import fs from "fs";
 import express from "express";
 import multer from "multer";
 import axios from "axios";
 import FormData from "form-data";
 import cors from "cors";
-import fs from "fs";
-import { promises as fsPromises } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Load environment variables
+dotenv.config();
+
+// Validate environment variables
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  throw new Error("Missing required environment variables for Supabase");
+}
+
+if (!process.env.GEOFENCE_SERVER_URL) {
+  throw new Error("Missing GEOFENCE_SERVER_URL environment variable");
+}
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
+const GEOFENCE_SERVER_URL = process.env.GEOFENCE_SERVER_URL;
 
 // Middleware
 app.use(cors());
@@ -63,7 +85,7 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype,
     });
 
-    const pythonServerUrl = "http://10.136.46.248:5000/predict";
+    const pythonServerUrl = "http://192.0.0.2:9000/predict";
 
     try {
       const response = await axios.post(pythonServerUrl, formData, {
@@ -143,6 +165,108 @@ app.use((error, req, res, next) => {
 
   console.error("Unhandled error:", error);
   res.status(500).json({ error: "Something went wrong!" });
+});
+
+let latestGeofence = null;
+
+// Update the geofence save endpoint
+app.post("/api/geofence/save", async (req, res) => {
+  try {
+    const { coordinates, timestamp } = req.body;
+
+    // Validate input
+    if (!coordinates || !Array.isArray(coordinates)) {
+      return res.status(400).json({
+        error: "Invalid coordinates format",
+      });
+    }
+
+    // Format the data for both Supabase and external server
+    const geofenceData = {
+      coordinates: coordinates,
+      timestamp: timestamp || new Date().toISOString(),
+      metadata: {
+        created_at: new Date().toISOString(),
+        source: "IoE CCET",
+      },
+    };
+
+    try {
+      // First save to Supabase as backup
+      const { data: supabaseData, error: supabaseError } = await supabase
+        .from("geofences")
+        .insert([
+          {
+            coordinates: coordinates,
+            timestamp: timestamp || new Date().toISOString(),
+            metadata: geofenceData.metadata,
+          },
+        ])
+        .select();
+
+      if (supabaseError) {
+        console.error("Supabase Error:", supabaseError);
+        throw supabaseError;
+      }
+
+      // Then try to send to remote Python server
+      const externalResponse = await axios.post(
+        process.env.GEOFENCE_SERVER_URL,
+        geofenceData,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+
+      // Update local reference
+      latestGeofence = supabaseData[0];
+
+      res.json({
+        message: "Geofence saved successfully",
+        data: {
+          local: supabaseData[0],
+          external: externalResponse.data,
+        },
+      });
+    } catch (networkError) {
+      console.error("Error details:", {
+        message: networkError.message,
+        code: networkError.code,
+        response: networkError.response?.data,
+      });
+
+      // If external server fails but we saved to Supabase
+      if (latestGeofence) {
+        return res.status(207).json({
+          message: "Geofence saved partially",
+          warning: "Remote server unavailable",
+          data: {
+            local: latestGeofence,
+            external: null,
+          },
+        });
+      }
+
+      throw new Error(`Failed to save geofence: ${networkError.message}`);
+    }
+  } catch (error) {
+    console.error("Error saving geofence:", error);
+    res.status(500).json({
+      error: "Failed to save geofence",
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/geofence/latest", (req, res) => {
+  if (!latestGeofence) {
+    return res.status(404).json({ error: "No geofence saved yet" });
+  }
+  res.json(latestGeofence);
 });
 
 app.listen(PORT, () => {

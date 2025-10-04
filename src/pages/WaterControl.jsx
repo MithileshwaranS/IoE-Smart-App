@@ -1,55 +1,137 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Settings, Power, Clock, Droplets, Play, Pause, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { supabase } from "/supabase.js";
+import {
+  Settings,
+  Power,
+  Clock,
+  Droplets,
+  Play,
+  Pause,
+  RotateCcw,
+} from "lucide-react";
 
 const WaterControl = () => {
-  const [systems, setSystems] = useState([
-    { id: 'sprinkler1', name: 'Sprinkler System A', status: 'active', duration: 45, zone: 'Field A' },
-    { id: 'sprinkler2', name: 'Sprinkler System B', status: 'inactive', duration: 30, zone: 'Field B' },
-    { id: 'drip1', name: 'Drip Irrigation C', status: 'active', duration: 120, zone: 'Field C' },
-    { id: 'greenhouse', name: 'Greenhouse Misting', status: 'scheduled', duration: 15, zone: 'Greenhouse' },
-  ]);
+  const [systems, setSystems] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const [schedules, setSchedules] = useState([
-    { id: 1, system: 'Sprinkler System A', time: '06:00', duration: 45, days: 'Mon, Wed, Fri' },
-    { id: 2, system: 'Drip Irrigation C', time: '18:00', duration: 120, days: 'Daily' },
-    { id: 3, system: 'Greenhouse Misting', time: '12:00', duration: 15, days: 'Daily' },
-  ]);
+  // Fetch irrigation systems from Supabase
+  useEffect(() => {
+    const fetchSystems = async () => {
+      try {
+        const { data: systemsData, error: systemsError } = await supabase
+          .from("irrigation_systems")
+          .select("*")
+          .order("created_at", { ascending: true });
 
-  const toggleSystem = (id) => {
-    setSystems(systems.map(system => 
-      system.id === id 
-        ? { ...system, status: system.status === 'active' ? 'inactive' : 'active' }
-        : system
-    ));
+        if (systemsError) throw systemsError;
+
+        const { data: schedulesData, error: schedulesError } = await supabase
+          .from("irrigation_schedules")
+          .select("*")
+          .order("time", { ascending: true });
+
+        if (schedulesError) throw schedulesError;
+
+        setSystems(systemsData);
+        setSchedules(schedulesData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        setError("Failed to load irrigation systems");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSystems();
+  }, []);
+
+  // Toggle system status
+  const toggleSystem = async (id) => {
+    try {
+      const system = systems.find((s) => s.id === id);
+      const newStatus = system.status === "active" ? "inactive" : "active";
+
+      const { error } = await supabase
+        .from("irrigation_systems")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setSystems(
+        systems.map((system) =>
+          system.id === id ? { ...system, status: newStatus } : system
+        )
+      );
+    } catch (error) {
+      console.error("Error updating system:", error);
+      setError("Failed to update system status");
+    }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'active': return 'text-green-600';
-      case 'inactive': return 'text-gray-600';
-      case 'scheduled': return 'text-blue-600';
-      default: return 'text-gray-600';
+      case "active":
+        return "text-green-600";
+      case "inactive":
+        return "text-gray-600";
+      case "scheduled":
+        return "text-blue-600";
+      default:
+        return "text-gray-600";
     }
   };
 
   const getStatusBg = (status) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'inactive': return 'bg-gray-100 text-gray-800';
-      case 'scheduled': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case "active":
+        return "bg-green-100 text-green-800";
+      case "inactive":
+        return "bg-gray-100 text-gray-800";
+      case "scheduled":
+        return "bg-blue-100 text-blue-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'active': return <Play className="w-5 h-5 text-green-600" />;
-      case 'inactive': return <Pause className="w-5 h-5 text-gray-600" />;
-      case 'scheduled': return <Clock className="w-5 h-5 text-blue-600" />;
-      default: return <Pause className="w-5 h-5 text-gray-600" />;
+      case "active":
+        return <Play className="w-5 h-5 text-green-600" />;
+      case "inactive":
+        return <Pause className="w-5 h-5 text-gray-600" />;
+      case "scheduled":
+        return <Clock className="w-5 h-5 text-blue-600" />;
+      default:
+        return <Pause className="w-5 h-5 text-gray-600" />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center p-6 bg-red-50 rounded-lg">
+        <p className="text-red-600">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -65,7 +147,9 @@ const WaterControl = () => {
             <Settings className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Water Control System</h1>
+            <h1 className="text-2xl font-bold text-gray-800">
+              Water Control System
+            </h1>
             <p className="text-gray-500">Manage irrigation and water systems</p>
           </div>
         </div>
@@ -87,15 +171,21 @@ const WaterControl = () => {
                   <Droplets className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">{system.name}</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {system.name}
+                  </h3>
                   <p className="text-sm text-gray-500">{system.zone}</p>
                 </div>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBg(system.status)}`}>
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBg(
+                  system.status
+                )}`}
+              >
                 {system.status.toUpperCase()}
               </span>
             </div>
-            
+
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-2">
                 <Clock className="w-5 h-5 text-gray-400" />
@@ -103,25 +193,30 @@ const WaterControl = () => {
               </div>
               <div className="flex items-center space-x-2">
                 {getStatusIcon(system.status)}
-                <span className={`font-medium ${getStatusColor(system.status)}`}>
-                  {system.status === 'active' ? 'Running' : 
-                   system.status === 'scheduled' ? 'Scheduled' : 'Stopped'}
+                <span
+                  className={`font-medium ${getStatusColor(system.status)}`}
+                >
+                  {system.status === "active"
+                    ? "Running"
+                    : system.status === "scheduled"
+                    ? "Scheduled"
+                    : "Stopped"}
                 </span>
               </div>
             </div>
-            
+
             <div className="flex space-x-2">
               <motion.button
                 onClick={() => toggleSystem(system.id)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className={`flex-1 py-2 px-4 rounded-xl font-medium transition-all duration-200 ${
-                  system.status === 'active' 
-                    ? 'bg-red-500 text-white hover:bg-red-600' 
-                    : 'bg-green-500 text-white hover:bg-green-600'
+                  system.status === "active"
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-green-500 text-white hover:bg-green-600"
                 }`}
               >
-                {system.status === 'active' ? 'Stop' : 'Start'}
+                {system.status === "active" ? "Stop" : "Start"}
               </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -137,8 +232,10 @@ const WaterControl = () => {
 
       {/* Irrigation Schedule */}
       <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Irrigation Schedule</h2>
-        
+        <h2 className="text-xl font-bold text-gray-800 mb-4">
+          Irrigation Schedule
+        </h2>
+
         <div className="space-y-4">
           {schedules.map((schedule, index) => (
             <motion.div
@@ -154,7 +251,9 @@ const WaterControl = () => {
                 </div>
                 <div>
                   <p className="font-medium text-gray-800">{schedule.system}</p>
-                  <p className="text-sm text-gray-500">{schedule.time} • {schedule.duration} min • {schedule.days}</p>
+                  <p className="text-sm text-gray-500">
+                    {schedule.time} • {schedule.duration} min • {schedule.days}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -181,7 +280,7 @@ const WaterControl = () => {
       {/* Quick Controls */}
       <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg border border-gray-100">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Quick Controls</h2>
-        
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -189,34 +288,42 @@ const WaterControl = () => {
             className="flex flex-col items-center space-y-2 p-3 sm:p-4 bg-green-50 rounded-xl hover:bg-green-100 transition-all duration-200"
           >
             <Power className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
-            <span className="text-xs sm:text-sm font-medium text-green-600">Start All</span>
+            <span className="text-xs sm:text-sm font-medium text-green-600">
+              Start All
+            </span>
           </motion.button>
-          
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="flex flex-col items-center space-y-2 p-3 sm:p-4 bg-red-50 rounded-xl hover:bg-red-100 transition-all duration-200"
           >
             <Power className="w-6 h-6 sm:w-8 sm:h-8 text-red-600" />
-            <span className="text-xs sm:text-sm font-medium text-red-600">Stop All</span>
+            <span className="text-xs sm:text-sm font-medium text-red-600">
+              Stop All
+            </span>
           </motion.button>
-          
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="flex flex-col items-center space-y-2 p-3 sm:p-4 bg-blue-50 rounded-xl hover:bg-blue-100 transition-all duration-200"
           >
             <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-            <span className="text-xs sm:text-sm font-medium text-blue-600">Schedule</span>
+            <span className="text-xs sm:text-sm font-medium text-blue-600">
+              Schedule
+            </span>
           </motion.button>
-          
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="flex flex-col items-center space-y-2 p-3 sm:p-4 bg-purple-50 rounded-xl hover:bg-purple-100 transition-all duration-200"
           >
             <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
-            <span className="text-xs sm:text-sm font-medium text-purple-600">Settings</span>
+            <span className="text-xs sm:text-sm font-medium text-purple-600">
+              Settings
+            </span>
           </motion.button>
         </div>
       </div>

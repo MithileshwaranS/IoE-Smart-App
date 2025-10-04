@@ -1,24 +1,25 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Menu, 
-  X, 
-  Home, 
-  Wheat, 
-  Bug, 
-  Gauge, 
-  Droplets, 
-  Settings 
-} from 'lucide-react';
+import React, { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Menu,
+  X,
+  Home,
+  Wheat,
+  Bug,
+  Gauge,
+  Droplets,
+  Settings,
+} from "lucide-react";
 
 const menuItems = [
-  { path: '/', name: 'Dashboard', icon: Home },
-  { path: '/crop-prediction', name: 'Crop Prediction', icon: Wheat },
-  { path: '/crop-disease-prediction', name: 'Disease Prediction', icon: Bug },
-  { path: '/sensor-readings', name: 'Sensor Readings', icon: Gauge },
-  { path: '/water-level', name: 'Water Level', icon: Droplets },
-  { path: '/water-control', name: 'Water Control', icon: Settings },
+  { path: "/", name: "Dashboard", icon: Home },
+  { path: "/crop-prediction", name: "Crop Prediction", icon: Wheat },
+  { path: "/crop-disease-prediction", name: "Disease Prediction", icon: Bug },
+  { path: "/sensor-readings", name: "Sensor Readings", icon: Gauge },
+  { path: "/water-level", name: "Water Level", icon: Droplets },
+  { path: "/water-control", name: "Water Control", icon: Settings },
+  { path: "/geofence-map", name: "Geo Fence", icon: Settings },
 ];
 
 const Layout = ({ children }) => {
@@ -44,7 +45,7 @@ const Layout = ({ children }) => {
             </div>
             <h1 className="text-xl font-bold text-gray-800">IOE Smart App</h1>
           </div>
-          
+
           <button
             onClick={toggleMenu}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -69,26 +70,28 @@ const Layout = ({ children }) => {
                   <Wheat className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-gray-800">IOE Smart App</h2>
+                  <h2 className="text-lg font-bold text-gray-800">
+                    IOE Smart App
+                  </h2>
                   <p className="text-xs text-gray-500">Agricultural IoT</p>
                 </div>
               </div>
             </div>
-            
+
             <div className="flex-1 flex flex-col overflow-y-auto">
               <nav className="flex-1 px-2 py-4 space-y-1">
                 {menuItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
-                  
+
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
                         isActive
-                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ? "bg-gradient-to-r from-green-500 to-green-600 text-white"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       }`}
                     >
                       <Icon className="mr-3 flex-shrink-0 h-6 w-6" />
@@ -113,11 +116,11 @@ const Layout = ({ children }) => {
                 className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
                 onClick={closeMenu}
               />
-              
+
               <motion.nav
-                initial={{ x: '-100%' }}
+                initial={{ x: "-100%" }}
                 animate={{ x: 0 }}
-                exit={{ x: '-100%' }}
+                exit={{ x: "-100%" }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 className="lg:hidden fixed top-0 left-0 bottom-0 w-80 max-w-sm bg-white shadow-2xl z-50 flex flex-col"
               >
@@ -127,18 +130,20 @@ const Layout = ({ children }) => {
                       <Wheat className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-gray-800">IOE Smart App</h2>
+                      <h2 className="text-lg font-bold text-gray-800">
+                        IOE Smart App
+                      </h2>
                       <p className="text-xs text-gray-500">Agricultural IoT</p>
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex-1 flex flex-col overflow-y-auto">
                   <nav className="flex-1 px-2 py-4 space-y-1">
                     {menuItems.map((item) => {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
-                      
+
                       return (
                         <Link
                           key={item.path}
@@ -146,8 +151,8 @@ const Layout = ({ children }) => {
                           onClick={closeMenu}
                           className={`group flex items-center px-2 py-3 text-base font-medium rounded-md transition-colors duration-200 ${
                             isActive
-                              ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                              ? "bg-gradient-to-r from-green-500 to-green-600 text-white"
+                              : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                           }`}
                         >
                           <Icon className="mr-4 flex-shrink-0 h-6 w-6" />

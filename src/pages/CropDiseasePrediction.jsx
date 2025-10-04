@@ -13,6 +13,7 @@ import {
 
 const CropDiseasePrediction = () => {
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedCrop, setSelectedCrop] = useState("wheat");
   const [imagePreview, setImagePreview] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [predictionResult, setPredictionResult] = useState(null);
@@ -26,6 +27,13 @@ const CropDiseasePrediction = () => {
     { name: "Powdery Mildew", severity: "Medium", cases: 18 },
     { name: "Root Rot", severity: "Low", cases: 12 },
     { name: "Aphid Infestation", severity: "Medium", cases: 15 },
+  ];
+
+  const crops = [
+    { id: "wheat", name: "Wheat", icon: "🌾" },
+    { id: "corn", name: "Corn", icon: "🌽" },
+    { id: "rice", name: "Rice", icon: "🌾" },
+    { id: "tomato", name: "Tomato", icon: "🍅" },
   ];
 
   const handleImageSelect = (event) => {
@@ -75,13 +83,10 @@ const CropDiseasePrediction = () => {
       const formData = new FormData();
       formData.append("image", selectedImage);
 
-      const response = await fetch(
-        "https://ioe-smart-app.onrender.com/api/predict",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch("http://localhost:3001/api/predict", {
+        method: "POST",
+        body: formData,
+      });
 
       const data = await response.json();
 
@@ -129,6 +134,32 @@ const CropDiseasePrediction = () => {
             </h1>
             <p className="text-gray-500">AI-powered disease detection</p>
           </div>
+        </div>
+      </div>
+      {/* Crop Selection */}
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg border border-gray-100">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">
+          Select Crop Type
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {crops.map((crop) => (
+            <motion.button
+              key={crop.id}
+              onClick={() => setSelectedCrop(crop.id)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                selectedCrop === crop.id
+                  ? "border-green-500 bg-green-50 shadow-lg"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <div className="text-2xl sm:text-3xl mb-2">{crop.icon}</div>
+              <p className="font-medium text-gray-800 text-sm sm:text-base">
+                {crop.name}
+              </p>
+            </motion.button>
+          ))}
         </div>
       </div>
 
@@ -302,6 +333,18 @@ const CropDiseasePrediction = () => {
                   >
                     {Math.round(predictionResult.confidence * 100)}%
                   </p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 rounded-xl">
+                <div className="flex items-start space-x-3">
+                  <CheckCircle className="w-6 h-6 text-blue-600 mt-1" />
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Description</p>
+                    <p className="text-gray-800 font-medium">
+                      {predictionResult.description}
+                    </p>
+                  </div>
                 </div>
               </div>
 
