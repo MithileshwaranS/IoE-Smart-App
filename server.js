@@ -172,7 +172,7 @@ let latestGeofence = null;
 // Update the geofence save endpoint
 app.post("/api/geofence/save", async (req, res) => {
   try {
-    const { coordinates, timestamp } = req.body;
+    const { coordinates } = req.body;
 
     // Validate input
     if (!coordinates || !Array.isArray(coordinates)) {
@@ -181,27 +181,11 @@ app.post("/api/geofence/save", async (req, res) => {
       });
     }
 
-    // Format the data for both Supabase and external server
-    const geofenceData = {
-      coordinates: coordinates,
-      timestamp: timestamp || new Date().toISOString(),
-      metadata: {
-        created_at: new Date().toISOString(),
-        source: "IoE CCET",
-      },
-    };
-
     try {
-      // First save to Supabase as backup
+      // Save to Supabase
       const { data: supabaseData, error: supabaseError } = await supabase
         .from("geofences")
-        .insert([
-          {
-            coordinates: coordinates,
-            timestamp: timestamp || new Date().toISOString(),
-            metadata: geofenceData.metadata,
-          },
-        ])
+        .insert([{ coordinates }])
         .select();
 
       if (supabaseError) {
@@ -209,48 +193,15 @@ app.post("/api/geofence/save", async (req, res) => {
         throw supabaseError;
       }
 
-      // Then try to send to remote Python server
-      const externalResponse = await axios.post(
-        process.env.GEOFENCE_SERVER_URL,
-        geofenceData,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          timeout: 10000,
-        }
-      );
-
       // Update local reference
       latestGeofence = supabaseData[0];
 
       res.json({
         message: "Geofence saved successfully",
-        data: {
-          local: supabaseData[0],
-          external: externalResponse.data,
-        },
+        data: { coordinates },
       });
     } catch (networkError) {
-      console.error("Error details:", {
-        message: networkError.message,
-        code: networkError.code,
-        response: networkError.response?.data,
-      });
-
-      // If external server fails but we saved to Supabase
-      if (latestGeofence) {
-        return res.status(207).json({
-          message: "Geofence saved partially",
-          warning: "Remote server unavailable",
-          data: {
-            local: latestGeofence,
-            external: null,
-          },
-        });
-      }
-
+      console.error("Database Error:", networkError.message);
       throw new Error(`Failed to save geofence: ${networkError.message}`);
     }
   } catch (error) {
