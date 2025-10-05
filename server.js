@@ -36,6 +36,10 @@ const supabase = createClient(
 );
 
 const GEOFENCE_SERVER_URL = process.env.GEOFENCE_SERVER_URL;
+const FLASK_SERVER_URL = process.env.FLASK_SERVER_URL;
+
+// Add this after your other imports
+// Update with your Flask server URL
 
 // Middleware
 app.use(cors());
@@ -85,7 +89,7 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype,
     });
 
-    const pythonServerUrl = "http://192.0.0.2:9000/predict";
+    const pythonServerUrl = "http://localhost:9000/predict";
 
     try {
       const response = await axios.post(pythonServerUrl, formData, {
@@ -170,6 +174,8 @@ app.use((error, req, res, next) => {
 let latestGeofence = null;
 
 // Update the geofence save endpoint
+const pythonServerUrl = "http://localhost:9000/api/geofence/save";
+
 app.post("/api/geofence/save", async (req, res) => {
   try {
     const { coordinates } = req.body;
@@ -177,36 +183,46 @@ app.post("/api/geofence/save", async (req, res) => {
     // Validate input
     if (!coordinates || !Array.isArray(coordinates)) {
       return res.status(400).json({
-        error: "Invalid coordinates format",
+        error: "Invalid coordinates format. Expected array of coordinates.",
       });
     }
 
-    try {
-      // Save to Supabase
-      const { data: supabaseData, error: supabaseError } = await supabase
-        .from("geofences")
-        .insert([{ coordinates }])
-        .select();
+    // Format data for Python server
+    const pythonPayload = {
+      coordinates: coordinates,
+    };
 
-      if (supabaseError) {
-        console.error("Supabase Error:", supabaseError);
-        throw supabaseError;
-      }
+    console.log("Sending to Python server:", pythonPayload);
+
+    try {
+      const response = await axios.post(pythonServerUrl, pythonPayload, {
+        headers: { "Content-Type": "application/json" },
+        timeout: 30000,
+      });
 
       // Update local reference
-      latestGeofence = supabaseData[0];
+      latestGeofence = { coordinates };
 
       res.json({
         message: "Geofence saved successfully",
-        data: { coordinates },
+        data: response.data,
       });
     } catch (networkError) {
-      console.error("Database Error:", networkError.message);
-      throw new Error(`Failed to save geofence: ${networkError.message}`);
+      console.error("Python Server Response:", {
+        status: networkError.response?.status,
+        data: networkError.response?.data,
+        message: networkError.message,
+      });
+
+      throw new Error(
+        `Python server error: ${
+          networkError.response?.data?.error || networkError.message
+        }`
+      );
     }
   } catch (error) {
-    console.error("Error saving geofence:", error);
-    res.status(500).json({
+    console.error("Geofence save error:", error.message);
+    res.status(error.response?.status || 500).json({
       error: "Failed to save geofence",
       details: error.message,
     });
