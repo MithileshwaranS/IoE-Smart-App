@@ -237,8 +237,8 @@ IoE-CCET/
 
 - 🎓 B.Tech Electrical and Computer Engineering @ Amrita Vishwa Vidyapeetham
 - 💡 Passionate about IoE, Embedded Systems, and Smart Agriculture
-- 📧 [your.email@example.com](mailto:your.email@example.com)
-- 🔗 [GitHub](https://github.com/<your-username>)
+- 📧 [mithileshwaran24@gmail.com](mailto:mithileshwaran24@gmail.com)
+- 🔗 [GitHub](https://github.com/MithileshwaranS)
 
 ---
 
