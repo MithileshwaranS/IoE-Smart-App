@@ -8,7 +8,7 @@ import CropPrediction from "./pages/CropPrediction";
 import CropDiseasePrediction from "./pages/CropDiseasePrediction";
 import SensorReadings from "./pages/SensorReadings";
 import WaterLevel from "./pages/WaterLevel";
-import WaterControl from "./pages/WaterControl";
+// import WaterControl from "./pages/WaterControl";
 import GeofencePage from "./pages/GeofencePage";
 
 function App() {
@@ -27,7 +27,7 @@ function App() {
               />
               <Route path="/sensor-readings" element={<SensorReadings />} />
               <Route path="/water-level" element={<WaterLevel />} />
-              <Route path="/water-control" element={<WaterControl />} />
+              {/* <Route path="/water-control" element={<WaterControl />} /> */}
               <Route path="/geofence-map" element={<GeofencePage />} />
             </Routes>
           </AnimatePresence>

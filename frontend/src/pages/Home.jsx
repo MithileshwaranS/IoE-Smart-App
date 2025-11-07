@@ -10,6 +10,7 @@ import {
   TrendingUp,
   AlertTriangle,
   CheckCircle,
+  MapPin,
 } from "lucide-react";
 
 const Home = () => {
@@ -91,6 +92,12 @@ const Home = () => {
       color: "from-purple-500 to-purple-600",
       route: "/water-control",
     },
+    {
+      name: "Geo Fence",
+      icon: MapPin,
+      color: "from-purple-500 to-pink-600",
+      route: "geofence-map",
+    },
   ];
 
   return (
@@ -141,7 +148,7 @@ const Home = () => {
       {/* Quick Actions */}
       <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg border border-gray-100">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-4">
           {quickActions.map((action, index) => {
             const Icon = action.icon;
             return (

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Bug,
@@ -33,7 +33,6 @@ const CropDiseasePrediction = () => {
     { id: "wheat", name: "Wheat", icon: "🌾" },
     { id: "corn", name: "Corn", icon: "🌽" },
     { id: "rice", name: "Rice", icon: "🌾" },
-    { id: "tomato", name: "Tomato", icon: "🍅" },
   ];
 
   const handleImageSelect = (event) => {
@@ -69,6 +68,11 @@ const CropDiseasePrediction = () => {
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
+  useEffect(() => {
+    const value = "Hello World";
+    console.log(selectedCrop);
+  }, [selectedCrop]);
+
   const handleSubmit = async () => {
     if (!selectedImage) {
       setError("Please select an image first");
@@ -82,6 +86,7 @@ const CropDiseasePrediction = () => {
     try {
       const formData = new FormData();
       formData.append("image", selectedImage);
+      formData.append("cropType", selectedCrop);
 
       const response = await fetch("http://localhost:3001/api/predict", {
         method: "POST",
@@ -141,7 +146,7 @@ const CropDiseasePrediction = () => {
         <h2 className="text-xl font-bold text-gray-800 mb-4">
           Select Crop Type
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           {crops.map((crop) => (
             <motion.button
               key={crop.id}

@@ -81,6 +81,8 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No image file provided" });
     }
 
+    const cropType = req.body.cropType || "wheat"; // Get crop type from request, default to wheat
+    console.log("Received image for crop type:", cropType);
     console.log("Received image:", req.file.filename);
 
     const formData = new FormData();
@@ -88,8 +90,9 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
       filename: req.file.originalname,
       contentType: req.file.mimetype,
     });
+    formData.append("cropType", cropType);
 
-    const pythonServerUrl = "http://localhost:9000/predict";
+    const pythonServerUrl = "http://host.docker.internal:8000/predict";
 
     try {
       const response = await axios.post(pythonServerUrl, formData, {
@@ -174,7 +177,7 @@ app.use((error, req, res, next) => {
 let latestGeofence = null;
 
 // Update the geofence save endpoint
-const pythonServerUrl = "http://localhost:9000/api/geofence/save";
+const pythonServerUrl = "http://localhost:8000/api/geofence/save";
 
 app.post("/api/geofence/save", async (req, res) => {
   try {

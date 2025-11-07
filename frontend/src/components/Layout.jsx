@@ -10,16 +10,17 @@ import {
   Gauge,
   Droplets,
   Settings,
+  MapPin,
 } from "lucide-react";
 
 const menuItems = [
   { path: "/", name: "Dashboard", icon: Home },
-  { path: "/crop-prediction", name: "Crop Prediction", icon: Wheat },
   { path: "/crop-disease-prediction", name: "Disease Prediction", icon: Bug },
+  { path: "/crop-prediction", name: "Crop Yield Prediction", icon: Wheat },
   { path: "/sensor-readings", name: "Sensor Readings", icon: Gauge },
   { path: "/water-level", name: "Water Level", icon: Droplets },
   { path: "/water-control", name: "Water Control", icon: Settings },
-  { path: "/geofence-map", name: "Geo Fence", icon: Settings },
+  { path: "/geofence-map", name: "Geo Fence", icon: MapPin },
 ];
 
 const Layout = ({ children }) => {
