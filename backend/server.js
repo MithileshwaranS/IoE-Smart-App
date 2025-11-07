@@ -92,10 +92,10 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
     });
     formData.append("cropType", cropType);
 
-    const pythonServerUrl = "http://host.docker.internal:8000/predict";
+    const MLServerUrl = "http://host.docker.internal:8001/predict";
 
     try {
-      const response = await axios.post(pythonServerUrl, formData, {
+      const response = await axios.post(MLServerUrl, formData, {
         headers: {
           ...formData.getHeaders(),
         },
@@ -177,7 +177,7 @@ app.use((error, req, res, next) => {
 let latestGeofence = null;
 
 // Update the geofence save endpoint
-const pythonServerUrl = "http://localhost:8000/api/geofence/save";
+const gpsServerUrl = "http://host.docker.internal:8000/api/geofence/save";
 
 app.post("/api/geofence/save", async (req, res) => {
   try {
@@ -198,7 +198,7 @@ app.post("/api/geofence/save", async (req, res) => {
     console.log("Sending to Python server:", pythonPayload);
 
     try {
-      const response = await axios.post(pythonServerUrl, pythonPayload, {
+      const response = await axios.post(gpsServerUrl, pythonPayload, {
         headers: { "Content-Type": "application/json" },
         timeout: 30000,
       });

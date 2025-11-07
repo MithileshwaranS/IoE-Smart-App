@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose ML server port
-EXPOSE 8000
+EXPOSE 8001
 
 # Start FastAPI ML server
 CMD ["python", "diseasePrediction.py"]

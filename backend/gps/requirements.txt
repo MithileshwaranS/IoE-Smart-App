@@ -1,0 +1,9 @@
+flask
+flask-socketio
+eventlet
+requests
+shapely
+folium
+python-socketio
+gunicorn
+
