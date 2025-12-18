@@ -27,7 +27,7 @@ services:
 
   mlserver:
     build:
-      context: ./backend/model
+      context: ./backend/model/cropDisease
     ports:
       - "8001:8001"
 
@@ -36,3 +36,9 @@ services:
       context: ./backend/gps
     ports:
       - "8000:8000"
+
+  cropprediction:
+    build:
+      context: ./backend/model/cropYield
+    ports:
+      - "8002:8002"

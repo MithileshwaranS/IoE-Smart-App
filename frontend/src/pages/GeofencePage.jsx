@@ -18,9 +18,19 @@ const GeofencePage = () => {
       return;
     }
 
+    const getApiBaseUrl = () => {
+      const envUrl = import.meta.env.VITE_API_BASE_URL;
+      if (envUrl && !envUrl.includes("localhost")) {
+        return envUrl;
+      }
+      return `${window.location.protocol}//${window.location.hostname}:3001`;
+    };
+
+    const BASE_URL = getApiBaseUrl();
+
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:3001/api/geofence/save", {
+      const response = await fetch(`${BASE_URL}/api/geofence/save`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

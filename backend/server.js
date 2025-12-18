@@ -10,6 +10,8 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { WebSocketServer } from "ws";
+import mqtt from "mqtt";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -92,7 +94,8 @@ app.post("/api/predict", upload.single("image"), async (req, res) => {
     });
     formData.append("cropType", cropType);
 
-    const MLServerUrl = "http://host.docker.internal:8001/predict";
+    const MLServerUrl =
+      process.env.ML_SERVER_URL || "http://mlserver:8001/predict";
 
     try {
       const response = await axios.post(MLServerUrl, formData, {
@@ -162,6 +165,127 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Crop yield prediction endpoint
+app.post("/api/crop-yield/predict", async (req, res) => {
+  try {
+    const {
+      state,
+      district,
+      year,
+      season,
+      crop,
+      area,
+      rainfall_mm,
+      temperature_c,
+      humidity,
+      wind_speed,
+      solar_radiation,
+      soil_moisture,
+      n_avg,
+      p_avg,
+      k_avg,
+    } = req.body;
+
+    // Validate required fields
+    if (
+      !state ||
+      !district ||
+      !year ||
+      !season ||
+      !crop ||
+      area === undefined ||
+      rainfall_mm === undefined ||
+      temperature_c === undefined ||
+      humidity === undefined ||
+      wind_speed === undefined ||
+      solar_radiation === undefined ||
+      soil_moisture === undefined ||
+      n_avg === undefined ||
+      p_avg === undefined ||
+      k_avg === undefined
+    ) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        details: "All fields are required for yield prediction",
+      });
+    }
+
+    // Prepare request payload
+    const payload = {
+      state: state.toLowerCase().trim(),
+      district: district.toLowerCase().trim(),
+      year: parseInt(year),
+      season: season.toLowerCase().trim(),
+      crop: crop.toLowerCase().trim(),
+      area: parseFloat(area),
+      rainfall_mm: parseFloat(rainfall_mm),
+      temperature_c: parseFloat(temperature_c),
+      humidity: parseFloat(humidity),
+      wind_speed: parseFloat(wind_speed),
+      solar_radiation: parseFloat(solar_radiation),
+      soil_moisture: parseFloat(soil_moisture),
+      n_avg: parseFloat(n_avg),
+      p_avg: parseFloat(p_avg),
+      k_avg: parseFloat(k_avg),
+    };
+
+    // Call Python ML service
+    const yieldServerUrl =
+      process.env.YIELD_SERVER_URL ||
+      "http://cropprediction:8002/predict";
+
+    try {
+      const response = await axios.post(yieldServerUrl, payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      });
+
+      res.json(response.data);
+    } catch (mlError) {
+      console.error("Yield Prediction Server Error:", mlError.message);
+
+      const errorResponses = {
+        ECONNREFUSED: {
+          status: 503,
+          message: "Yield prediction service is currently unavailable",
+          details:
+            "Please ensure the Python yield prediction server is running on port 8002",
+        },
+        ENOTFOUND: {
+          status: 503,
+          message: "Yield prediction service is currently unavailable",
+          details:
+            "Please ensure the Python yield prediction server is running on port 8002",
+        },
+        ECONNABORTED: {
+          status: 408,
+          message: "Prediction request timed out",
+          details: "The yield prediction server took too long to respond",
+        },
+      };
+
+      const errorResponse = errorResponses[mlError.code] || {
+        status: 500,
+        message: "Error processing yield prediction",
+        details: mlError.response?.data?.error || mlError.message,
+      };
+
+      return res.status(errorResponse.status).json({
+        error: errorResponse.message,
+        details: errorResponse.details,
+      });
+    }
+  } catch (error) {
+    console.error("Server Error:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      details: error.message,
+    });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
@@ -177,7 +301,7 @@ app.use((error, req, res, next) => {
 let latestGeofence = null;
 
 // Update the geofence save endpoint
-const gpsServerUrl = "http://host.docker.internal:8000/api/geofence/save";
+const gpsServerUrl = `${GEOFENCE_SERVER_URL}/api/geofence/save`;
 
 app.post("/api/geofence/save", async (req, res) => {
   try {
@@ -239,7 +363,58 @@ app.get("/api/geofence/latest", (req, res) => {
   res.json(latestGeofence);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
+});
+
+// WebSocket Server for MQTT Bridge
+const wss = new WebSocketServer({ server, path: "/mqtt" });
+
+// MQTT Client for bridging
+const mqttClient = mqtt.connect(
+  process.env.MQTT_BROKER_URL || "mqtt://localhost:1883",
+  {
+  clientId: `bridge_${Math.random().toString(16).substr(2, 8)}`,
+  reconnectPeriod: 5000,
+}
+);
+
+mqttClient.on("connect", () => {
+  console.log("MQTT Bridge: Connected to MQTT broker");
+  mqttClient.subscribe("environment/data", (err) => {
+    if (err) {
+      console.error("MQTT Bridge: Subscription error:", err);
+    } else {
+      console.log("MQTT Bridge: Subscribed to environment/data");
+    }
+  });
+});
+
+mqttClient.on("message", (topic, message) => {
+  // Broadcast MQTT message to all connected WebSocket clients
+  const data = message.toString();
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) {
+      // WebSocket.OPEN
+      client.send(data);
+    }
+  });
+});
+
+mqttClient.on("error", (error) => {
+  console.error("MQTT Bridge: Error:", error);
+});
+
+// WebSocket connection handler
+wss.on("connection", (ws) => {
+  console.log("MQTT Bridge: WebSocket client connected");
+
+  ws.on("close", () => {
+    console.log("MQTT Bridge: WebSocket client disconnected");
+  });
+
+  ws.on("error", (error) => {
+    console.error("MQTT Bridge: WebSocket error:", error);
+  });
 });

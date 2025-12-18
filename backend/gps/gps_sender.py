@@ -5,7 +5,9 @@ import serial  # pyserial
 import sys
 
 # CONFIG
-SERVER_BASE = "http://localhost:8000"
+import os
+
+SERVER_BASE = os.getenv("GEOFENCE_SERVER_URL", "http://localhost:8000")
 GPS_POST_URL = f"{SERVER_BASE}/api/gps"
 SERIAL_PORT = "/dev/tty.usbserial-0001"   # change to your port
 BAUD = 115200

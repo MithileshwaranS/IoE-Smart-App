@@ -74,6 +74,16 @@ const GeofenceEditor = ({ onGeofenceUpdate }) => {
   const [loading, setLoading] = useState(false);
   const featureGroupRef = useRef();
 
+  const getApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    if (envUrl && !envUrl.includes("localhost")) {
+      return envUrl;
+    }
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  };
+
+  const BASE_URL = getApiBaseUrl();
+
   const handleCreate = async (e) => {
     const layer = e.layer;
     const coords = layer.getLatLngs()[0].map((ll) => [ll.lat, ll.lng]);
@@ -84,7 +94,7 @@ const GeofenceEditor = ({ onGeofenceUpdate }) => {
 
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:3001/api/geofence", {
+      const response = await fetch(`${BASE_URL}/api/geofence`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -108,7 +118,7 @@ const GeofenceEditor = ({ onGeofenceUpdate }) => {
 
   const handleReset = async () => {
     try {
-      await fetch("http://localhost:3001/api/geofence", { method: "DELETE" });
+      await fetch(`${BASE_URL}/api/geofence`, { method: "DELETE" });
       if (featureGroupRef.current) {
         featureGroupRef.current.clearLayers();
       }
@@ -123,6 +133,34 @@ const GeofenceEditor = ({ onGeofenceUpdate }) => {
 
   return (
     <div className="space-y-4">
+      <style>{`
+        /* Adjust Leaflet controls position on mobile to avoid navbar overlap */
+        @media (max-width: 1023px) {
+          .leaflet-top.leaflet-right {
+            top: 70px !important;
+            z-index: 400 !important;
+          }
+          .leaflet-top.leaflet-left {
+            top: 70px !important;
+            z-index: 400 !important;
+          }
+          .leaflet-bottom.leaflet-right {
+            z-index: 400 !important;
+          }
+          .leaflet-bottom.leaflet-left {
+            z-index: 400 !important;
+          }
+          .leaflet-draw {
+            z-index: 400 !important;
+          }
+          .leaflet-control {
+            z-index: 400 !important;
+          }
+          .leaflet-control-attribution {
+            z-index: 400 !important;
+          }
+        }
+      `}</style>
       <div className="flex gap-4 mb-4">
         <button
           onClick={handleReset}

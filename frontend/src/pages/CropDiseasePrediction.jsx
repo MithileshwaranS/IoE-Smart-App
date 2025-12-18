@@ -35,6 +35,16 @@ const CropDiseasePrediction = () => {
     { id: "rice", name: "Rice", icon: "🌾" },
   ];
 
+  const getApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    if (envUrl && !envUrl.includes("localhost")) {
+      return envUrl;
+    }
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  };
+
+  const BASE_URL = getApiBaseUrl();
+
   const handleImageSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -88,7 +98,7 @@ const CropDiseasePrediction = () => {
       formData.append("image", selectedImage);
       formData.append("cropType", selectedCrop);
 
-      const response = await fetch("http://localhost:3001/api/predict", {
+      const response = await fetch(`${BASE_URL}/api/predict`, {
         method: "POST",
         body: formData,
       });
@@ -109,14 +119,20 @@ const CropDiseasePrediction = () => {
   };
 
   const getSeverityColor = (confidence) => {
+    // Red: >= 80% confidence (High Risk)
     if (confidence >= 0.8) return "text-red-600";
+    // Yellow: 60-79% confidence (Medium Risk)
     if (confidence >= 0.6) return "text-yellow-600";
+    // Green: < 60% confidence (Low Risk)
     return "text-green-600";
   };
 
   const getSeverityBg = (confidence) => {
+    // Red: >= 80% confidence (High Risk)
     if (confidence >= 0.8) return "bg-red-50";
+    // Yellow: 60-79% confidence (Medium Risk)
     if (confidence >= 0.6) return "bg-yellow-50";
+    // Green: < 60% confidence (Low Risk)
     return "bg-green-50";
   };
 

@@ -38,7 +38,7 @@ const Layout = ({ children }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
       {/* Mobile Header */}
-      <header className="lg:hidden bg-white shadow-lg border-b border-green-100 sticky top-0 z-50">
+      <header className="lg:hidden bg-white shadow-lg border-b border-green-100 sticky top-0 z-[1000]">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
@@ -114,7 +114,7 @@ const Layout = ({ children }) => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+                className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-[999]"
                 onClick={closeMenu}
               />
 
@@ -123,7 +123,7 @@ const Layout = ({ children }) => {
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="lg:hidden fixed top-0 left-0 bottom-0 w-80 max-w-sm bg-white shadow-2xl z-50 flex flex-col"
+                className="lg:hidden fixed top-0 left-0 bottom-0 w-80 max-w-sm bg-white shadow-2xl z-[1000] flex flex-col"
               >
                 <div className="flex items-center h-16 flex-shrink-0 px-4 bg-white border-b border-gray-200">
                   <div className="flex items-center space-x-3">

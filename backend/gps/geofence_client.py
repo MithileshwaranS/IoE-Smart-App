@@ -7,7 +7,7 @@ import subprocess
 from shapely.geometry import Point, Polygon
 import socketio
 
-SERVER_BASE = "http://localhost:8000"
+SERVER_BASE = os.getenv("GEOFENCE_SERVER_URL", "http://localhost:8000")
 MAP_FILE = "gps/gps_map.html"
 
 sio = socketio.Client()

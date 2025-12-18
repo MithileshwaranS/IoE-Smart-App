@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-torch
-torchvision
-timm
-pillow
-numpy
-python-multipart

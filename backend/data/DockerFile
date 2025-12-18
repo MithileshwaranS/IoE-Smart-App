@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies required by pandas
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy application files
+COPY backend/data ./backend/data
+
+# Install Python libraries
+RUN pip install --no-cache-dir \
+    pandas \
+    paho-mqtt
+
+# Run the publisher
+CMD ["python", "backend/data/publisher.py"]
