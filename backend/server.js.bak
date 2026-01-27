@@ -36,22 +36,11 @@ if (!process.env.GEOFENCE_SERVER_URL) {
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY,
+  process.env.SUPABASE_ANON_KEY
 );
 
 const GEOFENCE_SERVER_URL = process.env.GEOFENCE_SERVER_URL;
 const FLASK_SERVER_URL = process.env.FLASK_SERVER_URL;
-
-// Helper function to create authenticated Supabase client
-const getAuthenticatedSupabase = (token) => {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  });
-};
 
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
@@ -61,7 +50,6 @@ const authMiddleware = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
-    req.supabaseToken = token; // Store token for authenticated Supabase client
     next();
   } catch {
     res.status(403).json({ error: "Invalid token" });
@@ -375,7 +363,7 @@ app.post("/api/geofence/save", async (req, res) => {
       throw new Error(
         `Python server error: ${
           networkError.response?.data?.error || networkError.message
-        }`,
+        }`
       );
     }
   } catch (error) {
@@ -393,6 +381,9 @@ app.get("/api/geofence/latest", (req, res) => {
   }
   res.json(latestGeofence);
 });
+
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
@@ -430,7 +421,7 @@ app.post("/api/login", async (req, res) => {
         role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" },
+      { expiresIn: "1d" }
     );
 
     // 5. Send response
@@ -480,315 +471,6 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// Profile endpoint to verify authentication
-app.get("/api/profile", authMiddleware, async (req, res) => {
-  try {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("id, first_name, email, role")
-      .eq("id", req.user.id)
-      .limit(1);
-
-    if (error || user.length === 0) {
-      return res.status(401).json({ error: "User not found" });
-    }
-
-    res.status(200).json({
-      user: {
-        id: user[0].id,
-        firstName: user[0].first_name,
-        email: user[0].email,
-        role: user[0].role,
-      },
-    });
-  } catch (err) {
-    console.error("Profile error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Marketplace API Endpoints
-
-// Get all marketplace listings
-app.get("/api/marketplace/listings", async (req, res) => {
-  try {
-    const { data: listings, error } = await supabase
-      .from("marketplace_listings")
-      .select("*")
-      .eq("status", "available")
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    res.status(200).json({ listings });
-  } catch (err) {
-    console.error("Get listings error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Get user's listings (Farmer only)
-app.get("/api/marketplace/my-listings", authMiddleware, async (req, res) => {
-  try {
-    const { data: listings, error } = await supabase
-      .from("marketplace_listings")
-      .select("*")
-      .eq("farmer_id", req.user.id)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    res.status(200).json({ listings });
-  } catch (err) {
-    console.error("Get my listings error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Create new listing (Farmer only)
-app.post("/api/marketplace/listings", authMiddleware, async (req, res) => {
-  const { cropName, pricePerUnit, quantity, unit, description } = req.body;
-
-  if (!cropName || !pricePerUnit || !quantity || !unit) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    // Get farmer name from users table
-    const { data: farmer, error: farmerError } = await supabase
-      .from("users")
-      .select("first_name")
-      .eq("id", req.user.id)
-      .single();
-
-    if (farmerError) {
-      console.error("Farmer lookup error:", farmerError);
-      return res.status(401).json({ error: "Farmer not found" });
-    }
-
-    const { data: listing, error } = await supabase
-      .from("marketplace_listings")
-      .insert([
-        {
-          farmer_id: req.user.id,
-          farmer_name: farmer?.first_name || req.user.name || "Unknown Farmer",
-          crop_name: cropName,
-          price_per_unit: parseFloat(pricePerUnit),
-          quantity: parseInt(quantity),
-          unit: unit,
-          description: description || "",
-          status: "available",
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select();
-
-    if (error) throw error;
-
-    res.status(201).json({
-      message: "Listing created successfully",
-      listing: listing[0],
-    });
-  } catch (err) {
-    console.error("Create listing error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Update listing (Farmer only)
-app.put(
-  "/api/marketplace/listings/:listingId",
-  authMiddleware,
-  async (req, res) => {
-    const { listingId } = req.params;
-    const { cropName, pricePerUnit, quantity, unit, description } = req.body;
-
-    try {
-      // Verify ownership
-      const { data: listing, error: fetchError } = await supabase
-        .from("marketplace_listings")
-        .select("farmer_id")
-        .eq("id", listingId)
-        .single();
-
-      if (fetchError || !listing) {
-        return res.status(404).json({ error: "Listing not found" });
-      }
-
-      if (listing.farmer_id !== req.user.id) {
-        return res.status(403).json({ error: "Unauthorized" });
-      }
-
-      const { data: updatedListing, error } = await supabase
-        .from("marketplace_listings")
-        .update({
-          crop_name: cropName,
-          price_per_unit: parseFloat(pricePerUnit),
-          quantity: parseInt(quantity),
-          unit: unit,
-          description: description || "",
-        })
-        .eq("id", listingId)
-        .select();
-
-      if (error) throw error;
-
-      res.status(200).json({
-        message: "Listing updated successfully",
-        listing: updatedListing[0],
-      });
-    } catch (err) {
-      console.error("Update listing error:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
-
-// Delete listing (Farmer only)
-app.delete(
-  "/api/marketplace/listings/:listingId",
-  authMiddleware,
-  async (req, res) => {
-    const { listingId } = req.params;
-
-    try {
-      // Verify ownership
-      const { data: listing, error: fetchError } = await supabase
-        .from("marketplace_listings")
-        .select("farmer_id")
-        .eq("id", listingId)
-        .single();
-
-      if (fetchError || !listing) {
-        return res.status(404).json({ error: "Listing not found" });
-      }
-
-      if (listing.farmer_id !== req.user.id) {
-        return res.status(403).json({ error: "Unauthorized" });
-      }
-
-      const { error } = await supabase
-        .from("marketplace_listings")
-        .delete()
-        .eq("id", listingId);
-
-      if (error) throw error;
-
-      res.status(200).json({ message: "Listing deleted successfully" });
-    } catch (err) {
-      console.error("Delete listing error:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
-
-// Purchase listing (Buyer only)
-app.post("/api/marketplace/purchase", authMiddleware, async (req, res) => {
-  const { listingId, quantity } = req.body;
-
-  if (!listingId || !quantity || quantity <= 0) {
-    return res.status(400).json({ error: "Invalid purchase data" });
-  }
-
-  try {
-    // Get listing details
-    const { data: listing, error: listingError } = await supabase
-      .from("marketplace_listings")
-      .select("*")
-      .eq("id", listingId)
-      .single();
-
-    if (listingError || !listing) {
-      return res.status(404).json({ error: "Listing not found" });
-    }
-
-    const listingData = listing;
-
-    if (listingData.quantity < quantity) {
-      return res.status(400).json({
-        error: `Not enough quantity available. Only ${listingData.quantity} ${listingData.unit} available.`,
-      });
-    }
-
-    // Get buyer info
-    const { data: buyer, error: buyerError } = await supabase
-      .from("users")
-      .select("first_name, email")
-      .eq("id", req.user.id)
-      .single();
-
-    if (buyerError || !buyer) {
-      return res.status(401).json({ error: "Buyer not found" });
-    }
-
-    // Create transaction record
-    const { data: transaction, error: transError } = await supabase
-      .from("marketplace_transactions")
-      .insert([
-        {
-          listing_id: listingId,
-          buyer_id: req.user.id,
-          buyer_name: buyer.first_name,
-          buyer_email: buyer.email,
-          crop_name: listingData.crop_name,
-          farmer_name: listingData.farmer_name,
-          farmer_id: listingData.farmer_id,
-          quantity: parseInt(quantity),
-          unit: listingData.unit,
-          price_per_unit: listingData.price_per_unit,
-          total_price: listingData.price_per_unit * parseInt(quantity),
-          status: "completed",
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select();
-
-    if (transError) throw transError;
-
-    // Update listing quantity
-    const newQuantity = listingData.quantity - quantity;
-    const newStatus = newQuantity === 0 ? "sold_out" : "available";
-
-    const { data: updatedListing, error: updateError } = await supabase
-      .from("marketplace_listings")
-      .update({
-        quantity: newQuantity,
-        status: newStatus,
-      })
-      .eq("id", listingId)
-      .select();
-
-    if (updateError) throw updateError;
-
-    res.status(201).json({
-      message: "Purchase successful",
-      transaction: transaction[0],
-      listing: updatedListing[0],
-    });
-  } catch (err) {
-    console.error("Purchase error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Get user's purchase history
-app.get("/api/marketplace/transactions", authMiddleware, async (req, res) => {
-  try {
-    const { data: transactions, error } = await supabase
-      .from("marketplace_transactions")
-      .select("*")
-      .eq("buyer_id", req.user.id)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    res.status(200).json({ transactions });
-  } catch (err) {
-    console.error("Get transactions error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
@@ -803,7 +485,7 @@ const mqttClient = mqtt.connect(
   {
     clientId: `bridge_${Math.random().toString(16).substr(2, 8)}`,
     reconnectPeriod: 5000,
-  },
+  }
 );
 
 mqttClient.on("connect", () => {

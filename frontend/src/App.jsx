@@ -10,29 +10,46 @@ import SensorReadings from "./pages/SensorReadings";
 import WaterLevel from "./pages/WaterLevel";
 // import WaterControl from "./pages/WaterControl";
 import GeofencePage from "./pages/GeofencePage";
+import Login from "./pages/Login";
+import Marketplace from "./pages/Marketplace";
+import BuyerDashboard from "./pages/BuyerDashboard";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { Outlet } from "react-router-dom";
 
 function App() {
   return (
     <>
       <Toaster position="top-right" />
-      <Router>
-        <Layout>
+      <AuthProvider>
+        <Router>
           <AnimatePresence mode="wait">
             <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/crop-prediction" element={<CropPrediction />} />
+              <Route path="/login" element={<Login />} />
+
               <Route
-                path="/crop-disease-prediction"
-                element={<CropDiseasePrediction />}
-              />
-              <Route path="/sensor-readings" element={<SensorReadings />} />
-              <Route path="/water-level" element={<WaterLevel />} />
-              {/* <Route path="/water-control" element={<WaterControl />} /> */}
-              <Route path="/geofence-map" element={<GeofencePage />} />
+                element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/" element={<Home />} />
+                <Route path="/crop-prediction" element={<CropPrediction />} />
+                <Route
+                  path="/crop-disease-prediction"
+                  element={<CropDiseasePrediction />}
+                />
+                <Route path="/sensor-readings" element={<SensorReadings />} />
+                <Route path="/water-level" element={<WaterLevel />} />
+                <Route path="/geofence-map" element={<GeofencePage />} />
+                <Route path="/marketplace" element={<Marketplace />} />
+                <Route path="/buyer-dashboard" element={<BuyerDashboard />} />
+              </Route>
             </Routes>
           </AnimatePresence>
-        </Layout>
-      </Router>
+        </Router>
+      </AuthProvider>
     </>
   );
 }

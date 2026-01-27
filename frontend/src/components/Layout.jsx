@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, Outlet } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
@@ -11,10 +12,13 @@ import {
   Droplets,
   Settings,
   MapPin,
+  Wallet,
 } from "lucide-react";
 
 const menuItems = [
   { path: "/", name: "Dashboard", icon: Home },
+  { path: "/marketplace", name: "Marketplace", icon: Wheat },
+  { path: "/buyer-dashboard", name: "My Purchases", icon: Wallet },
   { path: "/crop-disease-prediction", name: "Disease Prediction", icon: Bug },
   { path: "/crop-prediction", name: "Crop Yield Prediction", icon: Wheat },
   { path: "/sensor-readings", name: "Sensor Readings", icon: Gauge },
@@ -26,6 +30,7 @@ const menuItems = [
 const Layout = ({ children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -46,18 +51,29 @@ const Layout = ({ children }) => {
             </div>
             <h1 className="text-xl font-bold text-gray-800">IOE Smart App</h1>
           </div>
-
-          <button
-            onClick={toggleMenu}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
-            aria-label="Toggle menu"
-          >
-            {isMenuOpen ? (
-              <X className="w-6 h-6 text-gray-600" />
+          <div className="flex items-center space-x-3">
+            {user ? (
+              <button onClick={logout} className="text-sm text-green-600">
+                Logout
+              </button>
             ) : (
-              <Menu className="w-6 h-6 text-gray-600" />
+              <Link to="/login" className="text-sm text-green-600">
+                Login
+              </Link>
             )}
-          </button>
+
+            <button
+              onClick={toggleMenu}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+              aria-label="Toggle menu"
+            >
+              {isMenuOpen ? (
+                <X className="w-6 h-6 text-gray-600" />
+              ) : (
+                <Menu className="w-6 h-6 text-gray-600" />
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -74,7 +90,25 @@ const Layout = ({ children }) => {
                   <h2 className="text-lg font-bold text-gray-800">
                     IOE Smart App
                   </h2>
-                  <p className="text-xs text-gray-500">Agricultural IoT</p>
+                  {/* <p className="text-xs text-gray-500">Agricultural IoT</p> */}
+                </div>
+                <div className="ml-auto text-right">
+                  {user ? (
+                    <div className="text-sm">
+                      <div className="font-medium">{user.name}</div>
+                      <div className="text-xs text-gray-500">{user.role}</div>
+                      <button
+                        onClick={logout}
+                        className="text-xs text-red-500 mt-1"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  ) : (
+                    <Link to="/login" className="text-sm text-green-600">
+                      Login
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -173,7 +207,7 @@ const Layout = ({ children }) => {
           <main className="flex-1 relative overflow-y-auto focus:outline-none">
             <div className="py-6">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-                {children}
+                <Outlet />
               </div>
             </div>
           </main>
