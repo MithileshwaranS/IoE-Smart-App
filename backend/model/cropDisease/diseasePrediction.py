@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import io
+import os
 import torch
 import timm
 from PIL import Image
@@ -19,8 +20,9 @@ CONF_THRESHOLD = 0.70  # 70% confidence threshold
 # -------------------------------
 # MODEL PATHS
 # -------------------------------
-RICE_WEIGHTS = "mobilevit_rice2.pth"
-CORN_WEIGHTS = "mobilevit_corn1.pth"
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RICE_WEIGHTS = os.path.join(_BASE_DIR, "mobilevit_rice2.pth")
+CORN_WEIGHTS = os.path.join(_BASE_DIR, "mobilevit_corn1.pth")
 
 # -------------------------------
 # RICE MODEL

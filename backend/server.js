@@ -13,7 +13,6 @@ import dotenv from "dotenv";
 import { WebSocketServer } from "ws";
 import mqtt from "mqtt";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,17 +28,20 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
   throw new Error("Missing required environment variables for Supabase");
 }
 
-if (!process.env.GEOFENCE_SERVER_URL) {
-  throw new Error("Missing GEOFENCE_SERVER_URL environment variable");
-}
-
-// Initialize Supabase client
+// Initialize Supabase client (anon key — subject to RLS)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY,
 );
+console.log("URL:", process.env.SUPABASE_URL);
+console.log("KEY exists:", !!process.env.SUPABASE_ANON_KEY);
+try {
+  const res = await fetch("https://odymelxqynvyoatqfypd.supabase.co");
+  console.log("Direct status:", res.status);
+} catch (err) {
+  console.log("Direct fetch error:", err);
+}
 
-const GEOFENCE_SERVER_URL = process.env.GEOFENCE_SERVER_URL;
 const FLASK_SERVER_URL = process.env.FLASK_SERVER_URL;
 
 // Helper function to create authenticated Supabase client
@@ -53,26 +55,27 @@ const getAuthenticatedSupabase = (token) => {
   });
 };
 
+// Auth middleware: reads user ID directly from Authorization header
+// The client sends: Authorization: Bearer <user-uuid>
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    req.supabaseToken = token; // Store token for authenticated Supabase client
-    next();
-  } catch {
-    res.status(403).json({ error: "Invalid token" });
-  }
+  const userId = req.headers.authorization?.split(" ")[1];
+  if (!userId || !UUID_RE.test(userId)) return res.status(401).json({ error: "Unauthorized" });
+  req.user = { id: userId };
+  next();
 };
 
 // Add this after your other imports
 // Update with your Flask server URL
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: true, // reflect any origin — allows all IPs on the local network
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 // Configure multer for file uploads
@@ -331,60 +334,99 @@ app.use((error, req, res, next) => {
 
 let latestGeofence = null;
 
-// Update the geofence save endpoint
-const gpsServerUrl = `${GEOFENCE_SERVER_URL}/api/geofence/save`;
+function pointInPolygon(point, polygon) {
+  if (!polygon || polygon.length < 3) return false;
+  const [px, py] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersect =
+      yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function parseGpsPayload(payload) {
+  try {
+    const lat = payload.lat ?? payload.latitude ?? null;
+    const lng = payload.lng ?? payload.lon ?? payload.longitude ?? null;
+    if (lat === null || lng === null) return null;
+    const latF = parseFloat(lat),
+      lngF = parseFloat(lng);
+    if (isNaN(latF) || isNaN(lngF)) return null;
+    return { lat: latF, lng: lngF };
+  } catch {
+    return null;
+  }
+}
+
+// Convert Leaflet [lat,lng][] → GeoJSON Polygon (closes the ring, swaps to [lng,lat])
+function toGeoJsonPolygon(coordinates) {
+  const ring = coordinates.map(([lat, lng]) => [lng, lat]);
+  const first = ring[0], last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
+  return { type: "Polygon", coordinates: [ring] };
+}
+
+// Convert GeoJSON ring [[lng,lat],...] → Leaflet [[lat,lng],...]  (drops closing point)
+function fromGeoJsonPolygon(geoJson) {
+  const ring = geoJson.coordinates[0];
+  return ring.slice(0, -1).map(([lng, lat]) => [lat, lng]);
+}
+
+async function loadLatestGeofence() {
+  try {
+    const { data, error } = await supabase
+      .from("geofencesnew")
+      .select("polygon, metadata, created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      console.log("No saved geofence found in DB");
+      return;
+    }
+
+    const coordinates = fromGeoJsonPolygon(data.polygon);
+    latestGeofence = { coordinates };
+    console.log(`Geofence loaded from DB: ${coordinates.length} points (saved ${data.created_at})`);
+  } catch (err) {
+    console.error("Failed to load geofence from DB:", err.message);
+  }
+}
 
 app.post("/api/geofence/save", async (req, res) => {
-  try {
-    const { coordinates } = req.body;
+  const { coordinates } = req.body;
 
-    // Validate input
-    if (!coordinates || !Array.isArray(coordinates)) {
-      return res.status(400).json({
-        error: "Invalid coordinates format. Expected array of coordinates.",
-      });
-    }
-
-    // Format data for Python server
-    const pythonPayload = {
-      coordinates: coordinates,
-    };
-
-    console.log("Sending to Python server:", pythonPayload);
-
-    try {
-      const response = await axios.post(gpsServerUrl, pythonPayload, {
-        headers: { "Content-Type": "application/json" },
-        timeout: 30000,
-      });
-
-      // Update local reference
-      latestGeofence = { coordinates };
-
-      res.json({
-        message: "Geofence saved successfully",
-        data: response.data,
-      });
-    } catch (networkError) {
-      console.error("Python Server Response:", {
-        status: networkError.response?.status,
-        data: networkError.response?.data,
-        message: networkError.message,
-      });
-
-      throw new Error(
-        `Python server error: ${
-          networkError.response?.data?.error || networkError.message
-        }`,
-      );
-    }
-  } catch (error) {
-    console.error("Geofence save error:", error.message);
-    res.status(error.response?.status || 500).json({
-      error: "Failed to save geofence",
-      details: error.message,
+  if (!coordinates || !Array.isArray(coordinates)) {
+    return res.status(400).json({
+      error: "Invalid coordinates format. Expected array of coordinates.",
     });
   }
+
+  // Update in-memory immediately so GPS checks work right away
+  latestGeofence = { coordinates };
+  console.log(`Geofence saved in memory: ${coordinates.length} points`);
+
+  // Persist to Supabase (won't fail the request if DB write fails)
+  try {
+    const { error } = await supabase.from("geofencesnew").insert({
+      polygon: toGeoJsonPolygon(coordinates),
+      metadata: {
+        pointCount: coordinates.length,
+        savedAt: new Date().toISOString(),
+      },
+    });
+    if (error) console.error("Supabase geofence insert error:", error.message);
+    else console.log("Geofence persisted to Supabase");
+  } catch (err) {
+    console.error("Supabase geofence insert failed:", err.message);
+  }
+
+  res.json({ message: "Geofence saved successfully" });
 });
 
 app.get("/api/geofence/latest", (req, res) => {
@@ -423,20 +465,10 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // 4. Generate JWT
-    const token = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" },
-    );
-
-    // 5. Send response
+    // 4. Send response — user ID is the identifier, no token needed
     res.status(200).json({
       message: "Login successful",
-      token,
+      token: user.id,
       user: {
         id: user.id,
         firstName: user.first_name,
@@ -452,6 +484,7 @@ app.post("/api/login", async (req, res) => {
 
 app.post("/api/register", async (req, res) => {
   const { firstName, email, password, role } = req.body;
+  console.log(req.body);
 
   if (!firstName || !email || !password) {
     return res.status(400).json({ error: "All fields are required" });
@@ -470,7 +503,8 @@ app.post("/api/register", async (req, res) => {
     ]);
 
     if (error) {
-      return res.status(400).json({ error: "User already exists" });
+      console.error("Supabase error:", error);
+      return res.status(400).json({ error: error.message });
     }
 
     res.status(201).json({ message: "Account created successfully" });
@@ -789,9 +823,628 @@ app.get("/api/marketplace/transactions", authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================
+// AUCTION ROUTES
+// ============================================
+
+// GET /api/auctions - List all active auctions with filters
+app.get("/api/auctions", async (req, res) => {
+  try {
+    const {
+      status = "ACTIVE",
+      sortBy = "end_time",
+      limit = 20,
+      offset = 0,
+    } = req.query;
+
+    let query = supabase
+      .from("auctions")
+      .select(
+        `
+        id,
+        crop_name,
+        crop_variety,
+        crop_image_url,
+        description,
+        quantity,
+        unit,
+        base_price,
+        current_price,
+        status,
+        start_time,
+        end_time,
+        seller_id,
+        highest_bidder_id,
+        created_at
+      `,
+        { count: "exact" },
+      )
+      .eq("status", status);
+
+    // Add sorting
+    if (sortBy === "end_time") {
+      query = query.order("end_time", { ascending: true });
+    } else if (sortBy === "price") {
+      query = query.order("current_price", { ascending: false });
+    }
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ auctions: data, total: count });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/auctions/:id - Get auction details with bid history
+app.get("/api/auctions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get auction details
+    const { data: auction, error: auctionError } = await supabase
+      .from("auctions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (auctionError) {
+      return res.status(404).json({ error: "Auction not found" });
+    }
+
+    // Get bid history (latest bids first)
+    const { data: bids, error: bidsError } = await supabase
+      .from("bids")
+      .select(
+        `
+        id,
+        bid_amount,
+        bidder_id,
+        bid_time,
+        status
+      `,
+      )
+      .eq("auction_id", id)
+      .order("bid_amount", { ascending: false })
+      .limit(50);
+
+    if (bidsError) {
+      return res.status(400).json({ error: bidsError.message });
+    }
+
+    return res.json({ auction, bids });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auctions - Create new auction (farmers only)
+app.post("/api/auctions", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const {
+      cropName,
+      cropVariety,
+      cropImageUrl,
+      description,
+      quantity,
+      unit,
+      basePrice,
+      durationHours,
+    } = req.body;
+
+    // Validate inputs
+    if (!cropName || !basePrice || !quantity || !durationHours) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const endTime = new Date();
+    endTime.setHours(endTime.getHours() + parseInt(durationHours));
+
+    const { data, error } = await supabase
+      .from("auctions")
+      .insert({
+        seller_id: userId,
+        crop_name: cropName,
+        crop_variety: cropVariety,
+        crop_image_url: cropImageUrl,
+        description,
+        quantity: parseFloat(quantity),
+        unit: unit || "kg",
+        base_price: parseFloat(basePrice),
+        current_price: parseFloat(basePrice),
+        end_time: endTime.toISOString(),
+        status: "ACTIVE",
+      })
+      .select();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.status(201).json({ auction: data?.[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/auctions/:id - Update auction (seller only)
+app.put("/api/auctions/:id", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { status, durationHours } = req.body;
+
+    // Verify seller
+    const { data: auction, error: fetchError } = await supabase
+      .from("auctions")
+      .select("seller_id, status")
+      .eq("id", id)
+      .single();
+
+    if (fetchError) {
+      return res.status(404).json({ error: "Auction not found" });
+    }
+
+    if (auction.seller_id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (durationHours) {
+      const endTime = new Date();
+      endTime.setHours(endTime.getHours() + parseInt(durationHours));
+      updateData.end_time = endTime.toISOString();
+    }
+
+    const { data, error } = await supabase
+      .from("auctions")
+      .update(updateData)
+      .eq("id", id)
+      .select();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ auction: data?.[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/auctions/:id - Cancel auction (seller only)
+app.delete("/api/auctions/:id", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    // Verify seller and check status
+    const { data: auction, error: fetchError } = await supabase
+      .from("auctions")
+      .select("seller_id, status")
+      .eq("id", id)
+      .single();
+
+    if (fetchError) {
+      return res.status(404).json({ error: "Auction not found" });
+    }
+
+    if (auction.seller_id !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    if (auction.status !== "ACTIVE") {
+      return res.status(400).json({ error: "Can only cancel active auctions" });
+    }
+
+    const { data, error } = await supabase
+      .from("auctions")
+      .update({ status: "CANCELLED" })
+      .eq("id", id)
+      .select();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ message: "Auction cancelled", auction: data?.[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/auctions/seller/:sellerId - Get all auctions by a seller
+app.get("/api/auctions/seller/:sellerId", async (req, res) => {
+  try {
+    const { sellerId } = req.params;
+
+    const { data, error, count } = await supabase
+      .from("auctions")
+      .select("*", { count: "exact" })
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ auctions: data, total: count });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/auctions/user/my-auctions - Get current user's auctions
+app.get("/api/auctions/user/my-auctions", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { data, error, count } = await supabase
+      .from("auctions")
+      .select("*", { count: "exact" })
+      .eq("seller_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ auctions: data, total: count });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// BID ROUTES
+// ============================================
+
+// POST /api/bids - Place a bid on an auction
+app.post("/api/bids", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { auctionId, bidAmount } = req.body;
+
+    if (!auctionId || !bidAmount) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Get auction details
+    const { data: auction, error: auctionError } = await supabase
+      .from("auctions")
+      .select("*")
+      .eq("id", auctionId)
+      .single();
+
+    if (auctionError) {
+      return res.status(404).json({ error: "Auction not found" });
+    }
+
+    // Validate auction status
+    if (auction.status !== "ACTIVE") {
+      return res.status(400).json({ error: "Auction is not active" });
+    }
+
+    // Validate auction time
+    const endTime = new Date(auction.end_time);
+    if (endTime <= new Date()) {
+      return res.status(400).json({ error: "Auction has ended" });
+    }
+
+    // Prevent self-bidding
+    if (auction.seller_id === userId) {
+      return res
+        .status(400)
+        .json({ error: "Sellers cannot bid on their own auctions" });
+    }
+
+    // Validate bid amount (must be higher than current price)
+    const numBidAmount = parseFloat(bidAmount);
+    if (numBidAmount <= auction.current_price) {
+      return res.status(400).json({
+        error: `Bid amount must be higher than current price (${auction.current_price})`,
+      });
+    }
+
+    // Begin transaction: Create bid and update auction
+    // First, mark previous highest bid as outbid
+    if (auction.highest_bidder_id) {
+      await supabase
+        .from("bids")
+        .update({ status: "OUTBID" })
+        .eq("auction_id", auctionId)
+        .eq("status", "ACTIVE")
+        .neq("id", null);
+    }
+
+    // Create new bid
+    const { data: bid, error: bidError } = await supabase
+      .from("bids")
+      .insert({
+        auction_id: auctionId,
+        bidder_id: userId,
+        bid_amount: numBidAmount,
+        status: "ACTIVE",
+      })
+      .select();
+
+    if (bidError) {
+      return res.status(400).json({ error: bidError.message });
+    }
+
+    // Update auction with new highest bidder and price
+    const { data: updatedAuction, error: updateError } = await supabase
+      .from("auctions")
+      .update({
+        current_price: numBidAmount,
+        highest_bidder_id: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", auctionId)
+      .select();
+
+    if (updateError) {
+      return res.status(400).json({ error: updateError.message });
+    }
+
+    return res.status(201).json({
+      bid: bid?.[0],
+      auction: updatedAuction?.[0],
+      message: "Bid placed successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/auctions/:auctionId/bids - Get all bids for an auction
+app.get("/api/auctions/:auctionId/bids", async (req, res) => {
+  try {
+    const { auctionId } = req.params;
+
+    const { data, error, count } = await supabase
+      .from("bids")
+      .select("*", { count: "exact" })
+      .eq("auction_id", auctionId)
+      .order("bid_time", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ bids: data, total: count });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/user/my-bids - Get all bids placed by current user
+app.get("/api/user/my-bids", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { data, error, count } = await supabase
+      .from("bids")
+      .select(
+        `
+        id,
+        auction_id,
+        bid_amount,
+        status,
+        bid_time,
+        auctions:auction_id (
+          id,
+          crop_name,
+          crop_variety,
+          current_price,
+          status,
+          end_time
+        )
+      `,
+        { count: "exact" },
+      )
+      .eq("bidder_id", userId)
+      .order("bid_time", { ascending: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ bids: data, total: count });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auctions/:auctionId/accept-bid - Accept highest bid (seller only)
+app.post(
+  "/api/auctions/:auctionId/accept-bid",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { auctionId } = req.params;
+
+      // Get auction
+      const { data: auction, error: auctionError } = await supabase
+        .from("auctions")
+        .select("*")
+        .eq("id", auctionId)
+        .single();
+
+      if (auctionError) {
+        return res.status(404).json({ error: "Auction not found" });
+      }
+
+      // Verify seller
+      if (auction.seller_id !== userId) {
+        return res.status(403).json({ error: "Only seller can accept bids" });
+      }
+
+      if (auction.status === "SOLD") {
+        return res.status(400).json({ error: "Bid already accepted" });
+      }
+
+      // Get winning bid
+      const { data: winningBid, error: bidError } = await supabase
+        .from("bids")
+        .select("*")
+        .eq("auction_id", auctionId)
+        .eq("bidder_id", auction.highest_bidder_id)
+        .eq("status", "ACTIVE")
+        .single();
+
+      if (bidError || !winningBid) {
+        return res.status(400).json({ error: "No valid bids to accept" });
+      }
+
+      // Create settlement
+      const { data: settlement, error: settlementError } = await supabase
+        .from("auction_settlements")
+        .insert({
+          auction_id: auctionId,
+          winning_bid_id: winningBid.id,
+          seller_id: auction.seller_id,
+          buyer_id: auction.highest_bidder_id,
+          final_price: auction.current_price,
+          settlement_status: "ACCEPTED",
+        })
+        .select();
+
+      if (settlementError) {
+        return res.status(400).json({ error: settlementError.message });
+      }
+
+      // Update auction status
+      const { data: updatedAuction, error: updateError } = await supabase
+        .from("auctions")
+        .update({ status: "SOLD" })
+        .eq("id", auctionId)
+        .select();
+
+      if (updateError) {
+        return res.status(400).json({ error: updateError.message });
+      }
+
+      return res.json({
+        message: "Bid accepted successfully",
+        settlement: settlement?.[0],
+        auction: updatedAuction?.[0],
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  },
+);
+
+// POST /api/auctions/:auctionId/reject-bid - Reject highest bid (seller only)
+app.post(
+  "/api/auctions/:auctionId/reject-bid",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { auctionId } = req.params;
+
+      // Get auction
+      const { data: auction, error: auctionError } = await supabase
+        .from("auctions")
+        .select("*")
+        .eq("id", auctionId)
+        .single();
+
+      if (auctionError) {
+        return res.status(404).json({ error: "Auction not found" });
+      }
+
+      // Verify seller
+      if (auction.seller_id !== userId) {
+        return res.status(403).json({ error: "Only seller can reject bids" });
+      }
+
+      // Reject current highest bid
+      if (auction.highest_bidder_id) {
+        const { error: rejectError } = await supabase
+          .from("bids")
+          .update({ status: "REJECTED" })
+          .eq("auction_id", auctionId)
+          .eq("bidder_id", auction.highest_bidder_id)
+          .eq("status", "ACTIVE");
+
+        if (rejectError) {
+          return res.status(400).json({ error: rejectError.message });
+        }
+      }
+
+      // Get next highest bid
+      const { data: nextBid, error: nextBidError } = await supabase
+        .from("bids")
+        .select("*")
+        .eq("auction_id", auctionId)
+        .eq("status", "ACTIVE")
+        .order("bid_amount", { ascending: false })
+        .limit(1)
+        .single();
+
+      let updatedAuctionData = {
+        highest_bidder_id: null,
+        current_price: auction.base_price,
+      };
+
+      if (nextBid && !nextBidError) {
+        updatedAuctionData = {
+          highest_bidder_id: nextBid.bidder_id,
+          current_price: nextBid.bid_amount,
+        };
+      }
+
+      const { data: updatedAuction, error: updateError } = await supabase
+        .from("auctions")
+        .update(updatedAuctionData)
+        .eq("id", auctionId)
+        .select();
+
+      if (updateError) {
+        return res.status(400).json({ error: updateError.message });
+      }
+
+      return res.json({
+        message: "Bid rejected successfully",
+        auction: updatedAuction?.[0],
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  },
+);
+
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
+  loadLatestGeofence();
 });
 
 // WebSocket Server for MQTT Bridge
@@ -815,16 +1468,53 @@ mqttClient.on("connect", () => {
       console.log("MQTT Bridge: Subscribed to environment/data");
     }
   });
+  mqttClient.subscribe("esp32/gps", (err) => {
+    if (err) console.error("MQTT Bridge: esp32/gps subscription error:", err);
+    else console.log("MQTT Bridge: Subscribed to esp32/gps");
+  });
 });
 
 mqttClient.on("message", (topic, message) => {
-  // Broadcast MQTT message to all connected WebSocket clients
-  const data = message.toString();
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) {
-      // WebSocket.OPEN
-      client.send(data);
+  const raw = message.toString();
+
+  if (topic === "esp32/gps") {
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      console.warn("MQTT: esp32/gps invalid JSON:", raw);
+      return;
     }
+
+    const coords = parseGpsPayload(payload);
+    if (!coords) {
+      console.warn("MQTT: esp32/gps missing lat/lng:", payload);
+      return;
+    }
+
+    const inside =
+      latestGeofence && Array.isArray(latestGeofence.coordinates)
+        ? pointInPolygon([coords.lat, coords.lng], latestGeofence.coordinates)
+        : false;
+
+    const gpsMessage = JSON.stringify({
+      type: "gps_status",
+      lat: coords.lat,
+      lng: coords.lng,
+      inside,
+      timestamp: new Date().toISOString(),
+    });
+
+    wss.clients.forEach((c) => {
+      if (c.readyState === 1) c.send(gpsMessage);
+    });
+    // console.log(`GPS [${coords.lat}, ${coords.lng}] – ${inside ? "INSIDE" : "OUTSIDE"}`);
+    return;
+  }
+
+  // Default: broadcast raw message (environment/data and any other topics)
+  wss.clients.forEach((c) => {
+    if (c.readyState === 1) c.send(raw);
   });
 });
 

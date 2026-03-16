@@ -13,6 +13,10 @@ import GeofencePage from "./pages/GeofencePage";
 import Login from "./pages/Login";
 import Marketplace from "./pages/Marketplace";
 import BuyerDashboard from "./pages/BuyerDashboard";
+import AuctionListing from "./pages/AuctionListing";
+import AuctionDetails from "./pages/AuctionDetails";
+import AuctionManagement from "./pages/AuctionManagement";
+import BlockchainSales from "./pages/BlockchainSales";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Outlet } from "react-router-dom";
@@ -45,6 +49,19 @@ function App() {
                 <Route path="/geofence-map" element={<GeofencePage />} />
                 <Route path="/marketplace" element={<Marketplace />} />
                 <Route path="/buyer-dashboard" element={<BuyerDashboard />} />
+                <Route path="/auction-listing" element={<AuctionListing />} />
+                <Route
+                  path="/auction/:auctionId"
+                  element={<AuctionDetails />}
+                />
+                <Route
+                  path="/auction-management"
+                  element={<AuctionManagement />}
+                />
+                <Route
+                  path="/blockchain-sales"
+                  element={<BlockchainSales />}
+                />
               </Route>
             </Routes>
           </AnimatePresence>

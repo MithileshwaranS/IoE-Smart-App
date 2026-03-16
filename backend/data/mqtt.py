@@ -12,13 +12,13 @@ TOPIC = "environment/data"
 
 import os
 
-path = "data.csv"
+path = "backend/data/data.csv"
 print("Exists:", os.path.exists(path))
 print("Size (bytes):", os.path.getsize(path))
 
 
 # Load Excel file
-df = pd.read_csv("data.csv")
+df = pd.read_csv("backend/data/data.csv")
 print(df.head())
 
 

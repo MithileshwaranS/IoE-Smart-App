@@ -49,7 +49,7 @@ const stringSimilarity = (str1, str2) => {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1,
           matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
+          matrix[i - 1][j] + 1,
         );
       }
     }
@@ -408,7 +408,7 @@ const CropPrediction = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [season, setSeason] = useState("Rabi");
   const [selectedMonth, setSelectedMonth] = useState(
-    new Date().toISOString().slice(0, 7)
+    new Date().toISOString().slice(0, 7),
   ); // YYYY-MM
   const [area, setArea] = useState("");
 
@@ -518,7 +518,7 @@ const CropPrediction = () => {
                 data.solar_radiation?.toFixed(2) || "18"
               } MJ/m²`,
               soilMoisture: `${((data.soil_moisture || 0.28) * 100).toFixed(
-                1
+                1,
               )}%`,
               windSpeed: `${data.wind_speed?.toFixed(2) || "12"} m/s`,
             });
@@ -535,7 +535,7 @@ const CropPrediction = () => {
         console.error("WebSocket error:", error);
         if (isMounted) {
           setMqttError(
-            "WebSocket connection error. Make sure backend server is running."
+            "WebSocket connection error. Make sure backend server is running.",
           );
           setMqttConnected(false);
         }
@@ -586,7 +586,7 @@ const CropPrediction = () => {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const resp = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`
+              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
             );
             const j = await resp.json();
             const addr = j.address || {};
@@ -610,7 +610,7 @@ const CropPrediction = () => {
                 // Map detected district to nearest district within the matched state
                 const matchedDistrict = findMatchingDistrict(
                   detectedDistrict,
-                  matchedState
+                  matchedState,
                 );
 
                 if (matchedDistrict) {
@@ -625,7 +625,7 @@ const CropPrediction = () => {
                 setUserState("");
                 setDistrict("");
                 setLocationError(
-                  `Location detected: ${detectedState}, but not found in our list. Please select manually.`
+                  `Location detected: ${detectedState}, but not found in our list. Please select manually.`,
                 );
               }
             }
@@ -642,7 +642,7 @@ const CropPrediction = () => {
             setLocationLoading(false);
           }
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 10000 },
       );
     }
 
@@ -791,7 +791,7 @@ const CropPrediction = () => {
                           const lat = pos.coords.latitude;
                           const lon = pos.coords.longitude;
                           const resp = await fetch(
-                            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`
+                            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
                           );
                           const j = await resp.json();
                           const addr = j.address || {};
@@ -814,7 +814,7 @@ const CropPrediction = () => {
                             // Map detected district to nearest district within the matched state
                             const matchedDistrict = findMatchingDistrict(
                               detectedDistrict,
-                              matchedState
+                              matchedState,
                             );
 
                             if (matchedDistrict) {
@@ -829,12 +829,12 @@ const CropPrediction = () => {
                             setUserState("");
                             setDistrict("");
                             setLocationError(
-                              `Location detected: ${detectedState}, but not found in our list. Please select manually.`
+                              `Location detected: ${detectedState}, but not found in our list. Please select manually.`,
                             );
                           }
                         } catch (e) {
                           setLocationError(
-                            "Failed to reverse-geocode location"
+                            "Failed to reverse-geocode location",
                           );
                         } finally {
                           setLocationLoading(false);
@@ -842,11 +842,11 @@ const CropPrediction = () => {
                       },
                       (err) => {
                         setLocationError(
-                          err.message || "Location permission denied"
+                          err.message || "Location permission denied",
                         );
                         setLocationLoading(false);
                       },
-                      { enableHighAccuracy: true, timeout: 10000 }
+                      { enableHighAccuracy: true, timeout: 10000 },
                     );
                   } else {
                     setLocationError("Geolocation not supported");
@@ -1067,14 +1067,14 @@ const CropPrediction = () => {
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify(payload),
-                }
+                },
               );
 
               const data = await response.json();
 
               if (!response.ok) {
                 throw new Error(
-                  data.error || data.details || "Prediction failed"
+                  data.error || data.details || "Prediction failed",
                 );
               }
 

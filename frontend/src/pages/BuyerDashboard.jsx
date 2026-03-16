@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
 const BuyerDashboard = () => {
   const { user, getToken } = useAuth();
@@ -24,7 +25,7 @@ const BuyerDashboard = () => {
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState("all"); // 'all' | '30' | '90'
 
-  const API_URL = "http://localhost:3001";
+  const API_URL = getApiBaseUrl();
 
   // Redirect to marketplace if not logged in
   useEffect(() => {

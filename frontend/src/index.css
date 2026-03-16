@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400 !important;
+}
+
+.leaflet-marker-pane {
+  z-index: 600 !important;
+}

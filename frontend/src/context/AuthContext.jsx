@@ -1,79 +1,60 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     try {
-      // Try to restore user from localStorage
       const storedUser = localStorage.getItem("ioe_user");
-      const storedToken = localStorage.getItem("ioe_token");
+      if (!storedUser) return null;
 
-      if (storedUser && storedToken) {
-        return JSON.parse(storedUser);
+      const parsed = JSON.parse(storedUser);
+
+      // In this auth system the "token" is just the user's own ID.
+      // If they don't match, the stored data is stale (old JWT or session).
+      if (!parsed?.token || !parsed?.id || parsed.token !== parsed.id) {
+        localStorage.removeItem("ioe_user");
+        localStorage.removeItem("ioe_token");
+        return null;
       }
-      return null;
+
+      return parsed;
     } catch (e) {
+      localStorage.removeItem("ioe_user");
+      localStorage.removeItem("ioe_token");
       return null;
     }
   });
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
 
   useEffect(() => {
-    // Persist user and token to localStorage
     if (user) {
       localStorage.setItem("ioe_user", JSON.stringify(user));
-      if (user.token) {
-        localStorage.setItem("ioe_token", user.token);
-      }
+      localStorage.setItem("ioe_token", user.token);
     } else {
       localStorage.removeItem("ioe_user");
       localStorage.removeItem("ioe_token");
     }
   }, [user]);
 
-  // Function to validate token with backend
-  const validateToken = async (token) => {
-    try {
-      const response = await fetch("http://localhost:3001/api/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      return response.ok;
-    } catch (error) {
-      console.error("Token validation error:", error);
-      return false;
-    }
-  };
-
-  // Login with database credentials
+  // Login: server returns token = user.id
   const login = ({ name, email, role, token, id }) => {
     setUser({ id, name, email, role, token });
   };
 
-  // Logout and clear all stored data
+  // Logout: just clear local state — no server session to invalidate
   const logout = () => {
     setUser(null);
     localStorage.removeItem("ioe_user");
     localStorage.removeItem("ioe_token");
   };
 
-  // Get token from user state (from database)
-  const getToken = () => {
-    return user?.token;
-  };
+  const getToken = () => user?.token;
 
-  // Get user ID from authenticated user
-  const getUserId = () => {
-    return user?.id;
-  };
+  const getUserId = () => user?.id;
 
-  // Check if user is authenticated
-  const isAuthenticated = () => {
-    return !!user && !!user.token;
-  };
+  const isAuthenticated = () => !!user && !!user.id;
 
   return (
     <AuthContext.Provider
@@ -85,7 +66,6 @@ export const AuthProvider = ({ children }) => {
         getUserId,
         isAuthenticated,
         isLoading,
-        validateToken,
       }}
     >
       {children}

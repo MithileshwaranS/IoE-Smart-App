@@ -81,16 +81,16 @@ const Home = () => {
       route: "/sensor-readings",
     },
     {
-      name: "Water Level",
+      name: "My Purchases",
       icon: Droplets,
       color: "from-cyan-500 to-cyan-600",
-      route: "/water-level",
+      route: "/buyer-dashboard",
     },
     {
-      name: "Water Control",
+      name: "On-Chain Sales",
       icon: Settings,
       color: "from-purple-500 to-purple-600",
-      route: "/water-control",
+      route: "/blockchain-sales",
     },
     {
       name: "Geo Fence",
@@ -190,8 +190,8 @@ const Home = () => {
                     activity.status === "success"
                       ? "bg-green-500"
                       : activity.status === "warning"
-                      ? "bg-yellow-500"
-                      : "bg-blue-500"
+                        ? "bg-yellow-500"
+                        : "bg-blue-500"
                   }`}
                 />
                 <span className="text-gray-700">{activity.action}</span>

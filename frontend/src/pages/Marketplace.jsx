@@ -4,9 +4,10 @@ import MarketplaceCard from "../components/MarketplaceCard";
 import toast from "react-hot-toast";
 import { Edit2, Trash2, Plus } from "lucide-react";
 import { motion } from "framer-motion";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
 const Marketplace = () => {
-  const { user, getToken } = useAuth();
+  const { user, getToken, logout } = useAuth();
   const [listings, setListings] = useState([]);
   const [myListings, setMyListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +22,7 @@ const Marketplace = () => {
     description: "",
   });
 
-  const API_URL = "http://localhost:3001";
+  const API_URL = getApiBaseUrl();
 
   // Fetch all listings
   const fetchListings = async () => {
@@ -51,6 +52,10 @@ const Marketplace = () => {
           Authorization: `Bearer ${getToken()}`,
         },
       });
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        return;
+      }
       const data = await response.json();
 
       if (!response.ok) throw new Error(data.error);

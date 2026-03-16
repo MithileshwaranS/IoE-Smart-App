@@ -13,24 +13,41 @@ import {
   Settings,
   MapPin,
   Wallet,
+  Gavel,
+  PlusSquare,
+  Link2,
 } from "lucide-react";
 
-const menuItems = [
+const allMenuItems = [
   { path: "/", name: "Dashboard", icon: Home },
+  // Farm monitoring
+  { path: "/sensor-readings", name: "Sensor Readings", icon: Gauge },
+  { path: "/geofence-map", name: "Geo Fence", icon: MapPin },
+  // AI predictions
+  { path: "/crop-prediction", name: "Crop Yield Prediction", icon: Wheat },
+  { path: "/crop-disease-prediction", name: "Disease Prediction", icon: Bug },
+  // Trading
+  { path: "/marketplace", name: "Marketplace", icon: Wheat },
+  { path: "/auction-listing", name: "Auction Listing", icon: Gavel },
+  { path: "/auction-management", name: "Create Auction", icon: PlusSquare },
+  { path: "/buyer-dashboard", name: "My Purchases", icon: Wallet },
+  // Blockchain
+  { path: "/blockchain-sales", name: "On-Chain Sales", icon: Link2, blockchain: true },
+];
+
+const buyerMenuItems = [
   { path: "/marketplace", name: "Marketplace", icon: Wheat },
   { path: "/buyer-dashboard", name: "My Purchases", icon: Wallet },
-  { path: "/crop-disease-prediction", name: "Disease Prediction", icon: Bug },
-  { path: "/crop-prediction", name: "Crop Yield Prediction", icon: Wheat },
-  { path: "/sensor-readings", name: "Sensor Readings", icon: Gauge },
-  { path: "/water-level", name: "Water Level", icon: Droplets },
-  { path: "/water-control", name: "Water Control", icon: Settings },
-  { path: "/geofence-map", name: "Geo Fence", icon: MapPin },
+  { path: "/blockchain-sales", name: "On-Chain Sales", icon: Link2, blockchain: true },
 ];
 
 const Layout = ({ children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  // Get menu items based on user role
+  const menuItems = user?.role === "buyer" ? buyerMenuItems : allMenuItems;
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -131,6 +148,13 @@ const Layout = ({ children }) => {
                     >
                       <Icon className="mr-3 flex-shrink-0 h-6 w-6" />
                       {item.name}
+                      {item.blockchain && (
+                        <span className={`ml-auto text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                          isActive ? "bg-white/20 text-white" : "bg-violet-100 text-violet-700"
+                        }`}>
+                          ETH
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -192,6 +216,13 @@ const Layout = ({ children }) => {
                         >
                           <Icon className="mr-4 flex-shrink-0 h-6 w-6" />
                           {item.name}
+                          {item.blockchain && (
+                            <span className={`ml-auto text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                              isActive ? "bg-white/20 text-white" : "bg-violet-100 text-violet-700"
+                            }`}>
+                              ETH
+                            </span>
+                          )}
                         </Link>
                       );
                     })}

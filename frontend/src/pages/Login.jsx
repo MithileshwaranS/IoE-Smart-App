@@ -22,7 +22,7 @@ const Login = () => {
     }
 
     try {
-      const apiUrl = "http://localhost:3001";
+      const apiUrl = `http://${window.location.hostname}:3001`;
       const endpoint = isSignup ? "/api/register" : "/api/login";
 
       if (isSignup) {
@@ -68,7 +68,8 @@ const Login = () => {
         });
 
         toast.success("Logged in successfully");
-        navigate("/");
+        // Redirect to marketplace for buyers, dashboard for others
+        navigate(loginData.user.role === "buyer" ? "/marketplace" : "/");
       }
     } catch (error) {
       console.error("Auth error:", error);

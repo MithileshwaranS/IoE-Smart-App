@@ -5,14 +5,10 @@ services:
     build:
       context: ./frontend
     ports:
-      - "5173:5173"
-    working_dir: /app
-    command: npm run dev -- --host
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "80:80"
     depends_on:
       - backend
+    restart: unless-stopped
 
   backend:
     build:
@@ -20,25 +16,43 @@ services:
     ports:
       - "3001:3001"
     env_file:
-      - ./backend/.env
+      - ./backend/.env          # loads SUPABASE_URL, JWT_SECRET, MQTT_BROKER_URL etc.
+    environment:                # overrides inter-service URLs for Docker container networking
+      ML_SERVER_URL: http://mlserver:8001/predict
+      YIELD_SERVER_URL: http://cropprediction:8002/predict
+      FLASK_SERVER_URL: http://geofence:8000
+      GEOFENCE_SERVER_URL: http://geofence:8000
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       - mlserver
+      - cropprediction
       - geofence
+    restart: unless-stopped
 
   mlserver:
     build:
       context: ./backend/model/cropDisease
     ports:
       - "8001:8001"
-
-  geofence:
-    build:
-      context: ./backend/gps
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
 
   cropprediction:
     build:
       context: ./backend/model/cropYield
     ports:
       - "8002:8002"
+    restart: unless-stopped
+
+  geofence:
+    build:
+      context: ./backend/gps
+    ports:
+      - "8000:8000"
+    volumes:
+      - geofence_data:/app
+    restart: unless-stopped
+
+volumes:
+  uploads_data:
+  geofence_data:
