@@ -57,11 +57,13 @@ const getAuthenticatedSupabase = (token) => {
 
 // Auth middleware: reads user ID directly from Authorization header
 // The client sends: Authorization: Bearer <user-uuid>
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const authMiddleware = (req, res, next) => {
   const userId = req.headers.authorization?.split(" ")[1];
-  if (!userId || !UUID_RE.test(userId)) return res.status(401).json({ error: "Unauthorized" });
+  if (!userId || !UUID_RE.test(userId))
+    return res.status(401).json({ error: "Unauthorized" });
   req.user = { id: userId };
   next();
 };
@@ -77,6 +79,9 @@ app.use(
   }),
 );
 app.use(express.json());
+
+// Health check — used by docker-compose healthcheck
+app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -365,7 +370,8 @@ function parseGpsPayload(payload) {
 // Convert Leaflet [lat,lng][] → GeoJSON Polygon (closes the ring, swaps to [lng,lat])
 function toGeoJsonPolygon(coordinates) {
   const ring = coordinates.map(([lat, lng]) => [lng, lat]);
-  const first = ring[0], last = ring[ring.length - 1];
+  const first = ring[0],
+    last = ring[ring.length - 1];
   if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
   return { type: "Polygon", coordinates: [ring] };
 }
@@ -392,7 +398,9 @@ async function loadLatestGeofence() {
 
     const coordinates = fromGeoJsonPolygon(data.polygon);
     latestGeofence = { coordinates };
-    console.log(`Geofence loaded from DB: ${coordinates.length} points (saved ${data.created_at})`);
+    console.log(
+      `Geofence loaded from DB: ${coordinates.length} points (saved ${data.created_at})`,
+    );
   } catch (err) {
     console.error("Failed to load geofence from DB:", err.message);
   }
@@ -427,6 +435,69 @@ app.post("/api/geofence/save", async (req, res) => {
   }
 
   res.json({ message: "Geofence saved successfully" });
+});
+
+app.post("/api/devices/add", async (req, res) => {
+  const { hw_id, user_id } = req.body;
+
+  if (!hw_id) return res.status(400).json({ error: "hw_id required" });
+  if (!user_id) return res.status(400).json({ error: "user_id required" });
+
+  const { data, error } = await supabase
+    .from("bootstrap_tokens")
+    .select("*")
+    .eq("hw_id", hw_id)
+    .single();
+
+  if (error || !data) {
+    return res.status(404).json({ error: "Device not found" });
+  }
+
+  mqttClient.publish(
+    `devices/${hw_id}/provision`,
+    JSON.stringify({ start: true })
+  );
+
+  await supabase
+    .from("user_devices")
+    .upsert({ user_id, hw_id, device_type: data.device_type }, { onConflict: "user_id,hw_id" });
+
+  return res.json({ message: "Provision command sent", hw_id, device_type: data.device_type });
+});
+
+app.get("/api/devices/my", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: "user_id required" });
+  const { data, error } = await supabase
+    .from("user_devices")
+    .select("hw_id, linked_at, device_type")
+    .eq("user_id", user_id)
+    .order("linked_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ devices: data });
+});
+
+app.delete("/api/devices/disconnect", async (req, res) => {
+  const { user_id, hw_id } = req.body;
+  if (!user_id || !hw_id) return res.status(400).json({ error: "user_id and hw_id required" });
+
+  // Send MQTT decommission command to the device
+  mqttClient.publish(
+    `devices/${hw_id}/cmd`,
+    JSON.stringify({ command: "decommission" })
+  );
+
+  // Remove the user-device link from DB
+  const { data, error } = await supabase
+    .from("user_devices")
+    .delete()
+    .eq("user_id", user_id)
+    .eq("hw_id", hw_id)
+    .select();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data || data.length === 0) return res.status(404).json({ error: "Device not linked to this user" });
+
+  res.json({ message: "Device disconnected" });
 });
 
 app.get("/api/geofence/latest", (req, res) => {
@@ -1441,6 +1512,125 @@ app.post(
   },
 );
 
+// ─── Device Provisioning ────────────────────────────────────────────────────
+const MQTT_HOST = process.env.MQTT_HOST || "10.171.47.211";
+const MQTT_PORT = parseInt(process.env.MQTT_PORT || "1883", 10);
+const DEVICE_MQTT_CONFIG = {
+  gps:    { mqtt_topic: "esp32/gps" },
+  sensor: { mqtt_topic: "environment/data" },
+};
+
+app.post("/api/registerDevice", async (req, res) => {
+  console.log("[registerDevice] incoming payload:", JSON.stringify(req.body, null, 2));
+  try {
+    let { hw_id, pubkey, ts, signature, bootstrap_token } = req.body;
+
+    // Sanitize: ESP32 UART output can carry trailing \n, \r, or spaces
+    hw_id = hw_id?.trim();
+    bootstrap_token = bootstrap_token?.trim();
+
+    console.log("[registerDevice] bootstrap_token:", bootstrap_token);
+    console.log("[registerDevice] hw_id:", hw_id);
+
+    // Step 1 — Input validation
+    if (!hw_id || !pubkey || !ts || !signature || !bootstrap_token) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Step 2 — Bootstrap token lookup
+    const { data: tokenRow, error: tokenErr } = await supabase
+      .from("bootstrap_tokens")
+      .select("*")
+      .eq("token", bootstrap_token)
+      .eq("hw_id", hw_id)
+      .single();
+
+    console.log("[registerDevice] tokenErr:", tokenErr);
+    if (tokenErr || !tokenRow) {
+      return res.status(401).json({ error: "Invalid bootstrap token" });
+    }
+    // is_used can be NULL (default) or false — only true means consumed
+    if (tokenRow.is_used === true) {
+      return res.status(401).json({ error: "Token already used" });
+    }
+    if (new Date(tokenRow.expires_at) < new Date()) {
+      return res.status(401).json({ error: "Token expired" });
+    }
+
+    // Step 3 — Replay / timestamp check (±5 minutes)
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowSec - Number(ts)) > 300) {
+      return res.status(401).json({ error: "Timestamp out of range" });
+    }
+
+    // Step 4 — Duplicate registration check
+    const { data: existing } = await supabase
+      .from("devices")
+      .select("device_id")
+      .eq("hw_id", hw_id)
+      .single();
+
+    if (existing) {
+      return res.status(409).json({
+        error: "Device already registered",
+        device_id: existing.device_id,
+      });
+    }
+
+    // Step 5 — Signature verification (ECDSA P-256, IEEE-P1363 encoding)
+    const crypto = await import("crypto");
+    const message = `${hw_id}|${pubkey}|${ts}`;
+    let signatureValid = false;
+    try {
+      signatureValid = crypto.verify(
+        "SHA256",
+        Buffer.from(message),
+        { key: pubkey, dsaEncoding: "der" },
+        Buffer.from(signature, "base64"),
+      );
+    } catch {
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+    if (!signatureValid) {
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+
+    // Step 6 — Generate permanent device_id
+    const { v4: uuidv4 } = await import("uuid");
+    const device_id = `DEV-${uuidv4()}`;
+
+    // Step 7 — Persist device record
+    const { error: insertErr } = await supabase.from("devices").insert({
+      device_id,
+      hw_id,
+      public_key: pubkey,
+      device_type: tokenRow.device_type,
+    });
+    if (insertErr) {
+      return res.status(500).json({ error: "Failed to register device" });
+    }
+
+    // Step 8 — Mark token as used
+    await supabase
+      .from("bootstrap_tokens")
+      .update({ is_used: true })
+      .eq("token", bootstrap_token);
+
+    // Step 9 — Return permanent credentials
+    const typeConfig = DEVICE_MQTT_CONFIG[tokenRow.device_type] ?? DEVICE_MQTT_CONFIG.gps;
+    return res.status(200).json({
+      device_id,
+      mqtt_server: MQTT_HOST,
+      mqtt_port: MQTT_PORT,
+      mqtt_topic: typeConfig.mqtt_topic,
+      device_type: tokenRow.device_type,
+    });
+  } catch (err) {
+    console.error("registerDevice error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
@@ -1512,7 +1702,34 @@ mqttClient.on("message", (topic, message) => {
     return;
   }
 
-  // Default: broadcast raw message (environment/data and any other topics)
+  if (topic === "environment/data") {
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      console.warn("MQTT: environment/data invalid JSON:", raw);
+      wss.clients.forEach((c) => { if (c.readyState === 1) c.send(raw); });
+      return;
+    }
+
+    // Persist to DB
+    supabase.from("telemetry").insert({
+      nodeid: payload.node_id ?? payload.nodeid ?? null,
+      temp:   payload.temp   ?? null,
+      hum:    payload.hum    ?? null,
+      soil:   payload.soil_pct ?? payload.soil ?? null,
+      raw:    payload.soil_raw ?? payload.raw  ?? null,
+      motor:  payload.motor  ?? null,
+    }).then(({ error }) => {
+      if (error) console.error("Telemetry insert error:", error.message);
+    });
+
+    // Broadcast to WebSocket clients (CropPrediction etc.)
+    wss.clients.forEach((c) => { if (c.readyState === 1) c.send(raw); });
+    return;
+  }
+
+  // Default: broadcast raw message for any other topics
   wss.clients.forEach((c) => {
     if (c.readyState === 1) c.send(raw);
   });

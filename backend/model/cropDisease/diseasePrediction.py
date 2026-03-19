@@ -12,7 +12,7 @@ from torchvision import transforms
 # Minimal Crop Disease Prediction API - Rice + Corn
 # -------------------------------
 
-app = FastAPI(title="Crop Disease Prediction API - Minimal (Rice + Corn)")
+app = FastAPI(title="Crop Disease Prediction API (Rice + Corn + Wheat)")
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CONF_THRESHOLD = 0.70  # 70% confidence threshold
@@ -23,6 +23,7 @@ CONF_THRESHOLD = 0.70  # 70% confidence threshold
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RICE_WEIGHTS = os.path.join(_BASE_DIR, "mobilevit_rice2.pth")
 CORN_WEIGHTS = os.path.join(_BASE_DIR, "mobilevit_corn1.pth")
+WHEAT_WEIGHTS = os.path.join(_BASE_DIR, "mobilevit_wheat.pth")
 
 # -------------------------------
 # RICE MODEL
@@ -117,6 +118,50 @@ CORN_ADVICE = {
 }
 
 # -------------------------------
+# WHEAT MODEL
+# -------------------------------
+WHEAT_NUM_CLASSES = 6
+WHEAT_MODEL = timm.create_model("mobilevit_xxs", pretrained=False, num_classes=WHEAT_NUM_CLASSES)
+WHEAT_MODEL.load_state_dict(torch.load(WHEAT_WEIGHTS, map_location=DEVICE))
+WHEAT_MODEL.to(DEVICE).eval()
+
+WHEAT_CLASSES = [
+    "Brown_rust",
+    "Healthy",
+    "Loose_Smut",
+    "Septoria",
+    "Yellow_rust",
+    "unknown",
+]
+
+WHEAT_ADVICE = {
+    "Brown_rust": {
+        "description": "Orange-brown pustules on leaves caused by Puccinia triticina.",
+        "advice": "Apply triazole or strobilurin fungicide. Use resistant varieties."
+    },
+    "Healthy": {
+        "description": "No visible disease symptoms.",
+        "advice": "Continue routine monitoring and field hygiene."
+    },
+    "Loose_Smut": {
+        "description": "Grain replaced by black spore mass (Ustilago tritici).",
+        "advice": "Use certified disease-free seed and seed treatment fungicides."
+    },
+    "Septoria": {
+        "description": "Tan lesions with dark borders caused by Septoria tritici.",
+        "advice": "Apply fungicide at flag leaf stage. Rotate crops and use resistant varieties."
+    },
+    "Yellow_rust": {
+        "description": "Yellow-orange stripe pustules along leaf veins (Puccinia striiformis).",
+        "advice": "Apply triazole fungicide promptly. Use resistant varieties and monitor early."
+    },
+    "unknown": {
+        "description": "Model is not confident about the disease class.",
+        "advice": "Upload a clearer image or consult an agriculture expert."
+    },
+}
+
+# -------------------------------
 # IMAGE TRANSFORM
 # -------------------------------
 TRANSFORM = transforms.Compose([
@@ -181,10 +226,26 @@ async def predict(
 
             info = CORN_ADVICE[label]
 
+        # ---------- WHEAT ----------
+        elif crop == "wheat":
+            with torch.no_grad():
+                logits = WHEAT_MODEL(inp)
+                probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
+
+            idx = int(probs.argmax())
+            conf = float(probs[idx])
+
+            if conf < CONF_THRESHOLD:
+                label = "unknown"
+            else:
+                label = WHEAT_CLASSES[idx]
+
+            info = WHEAT_ADVICE[label]
+
         else:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Unsupported cropType. Use 'rice' or 'corn'."},
+                content={"success": False, "error": "Unsupported cropType. Use 'rice', 'corn', or 'wheat'."},
             )
 
         return {

@@ -3,7 +3,7 @@ from catboost import CatBoostRegressor
 
 # Load trained CatBoost model
 model = CatBoostRegressor()
-model.load_model("backend/model/cropYield/crop_yield_catboost.cbm")
+model.load_model("backend/model/cropYield/catboost_yield_model_v2.cbm")
 
 # Create input data (1 row)
 sample_input = pd.DataFrame({
