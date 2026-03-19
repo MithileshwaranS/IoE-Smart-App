@@ -7,7 +7,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   backend:
@@ -18,6 +19,7 @@ services:
     env_file:
       - ./backend/.env          # loads SUPABASE_URL, JWT_SECRET, MQTT_BROKER_URL etc.
     environment:                # overrides inter-service URLs for Docker container networking
+      MQTT_HOST: ${MQTT_HOST:-10.158.205.41}
       ML_SERVER_URL: http://mlserver:8001/predict
       YIELD_SERVER_URL: http://cropprediction:8002/predict
       FLASK_SERVER_URL: http://geofence:8000
@@ -25,9 +27,18 @@ services:
     volumes:
       - uploads_data:/app/uploads
     depends_on:
-      - mlserver
-      - cropprediction
-      - geofence
+      mlserver:
+        condition: service_healthy
+      cropprediction:
+        condition: service_healthy
+      geofence:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   mlserver:
@@ -35,6 +46,12 @@ services:
       context: ./backend/model/cropDisease
     ports:
       - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/docs', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s        # PyTorch model loading can take time
     restart: unless-stopped
 
   cropprediction:
@@ -42,6 +59,12 @@ services:
       context: ./backend/model/cropYield
     ports:
       - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/docs', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
   geofence:
@@ -51,6 +74,12 @@ services:
       - "8000:8000"
     volumes:
       - geofence_data:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/geofence', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
