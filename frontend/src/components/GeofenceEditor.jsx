@@ -48,7 +48,7 @@ const LEAFLET_GLASS_CSS = `
   }
   .leaflet-bar a,
   .leaflet-draw-toolbar a {
-    background: rgba(255,255,255,0.88) !important;
+    background-color: rgba(255,255,255,0.88) !important;
     backdrop-filter: blur(8px) !important;
     border-bottom: 1px solid rgba(0,0,0,0.06) !important;
     color: #374151 !important;
@@ -56,7 +56,7 @@ const LEAFLET_GLASS_CSS = `
     width: 36px !important;
     height: 36px !important;
     line-height: 36px !important;
-    transition: background 0.15s !important;
+    transition: background-color 0.15s !important;
   }
   .leaflet-bar a:last-child,
   .leaflet-draw-toolbar a:last-child {
@@ -64,10 +64,11 @@ const LEAFLET_GLASS_CSS = `
   }
   .leaflet-bar a:hover,
   .leaflet-draw-toolbar a:hover {
-    background: rgba(255,255,255,1) !important;
+    background-color: rgba(255,255,255,1) !important;
   }
   .leaflet-draw-actions a {
-    background: rgba(255,255,255,0.9) !important;
+    background-color: rgba(255,255,255,0.9) !important;
+    color: #374151 !important;
     width: auto !important;
     padding: 0 10px !important;
     font-size: 12px !important;
@@ -78,6 +79,23 @@ const LEAFLET_GLASS_CSS = `
     backdrop-filter: blur(4px) !important;
     border-radius: 6px 0 0 0 !important;
     font-size: 10px !important;
+  }
+  /* vertex dots while drawing / editing */
+  .leaflet-div-icon {
+    background: #16a34a !important;
+    border: 2px solid #fff !important;
+    border-radius: 3px !important;
+    width: 12px !important;
+    height: 12px !important;
+    margin-left: -6px !important;
+    margin-top: -6px !important;
+    box-shadow: 0 0 0 2px rgba(22,163,74,0.4), 0 2px 6px rgba(0,0,0,0.3) !important;
+  }
+  .leaflet-touch-icon {
+    background: #16a34a !important;
+    border: 2px solid #fff !important;
+    border-radius: 50% !important;
+    box-shadow: 0 0 0 2px rgba(22,163,74,0.4), 0 2px 6px rgba(0,0,0,0.3) !important;
   }
   @media (max-width: 1023px) {
     .leaflet-top.leaflet-right,

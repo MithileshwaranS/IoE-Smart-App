@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Map, CheckCircle2, Circle } from "lucide-react";
+import { Map, CheckCircle2, Circle, Cpu, Loader2, Plus, X } from "lucide-react";
+import { getApiBaseUrl } from "../utils/apiConfig";
 import GeofenceEditor from "../components/GeofenceEditor";
 import GpsStatusPanel from "../components/GpsStatusPanel";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
 // ── animation variants ──────────────────────────────────────────────────────
@@ -20,11 +22,67 @@ const cardVariants = {
 // ── GeofencePage ─────────────────────────────────────────────────────────────
 
 const GeofencePage = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [coordinates, setCoordinates] = useState(null);
   const [geofenceSaved, setGeofenceSaved] = useState(false);
   const [gpsStatus, setGpsStatus] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [hwId, setHwId] = useState("");
+  const [addingDevice, setAddingDevice] = useState(false);
+  const [linkedDevices, setLinkedDevices] = useState([]);
+  const [disconnecting, setDisconnecting] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`${getApiBaseUrl()}/api/devices/my?user_id=${user.id}`)
+      .then((r) => r.json())
+      .then((data) => { if (data.devices) setLinkedDevices(data.devices); })
+      .catch(() => {});
+  }, [user?.id]);
+
+  const handleAddDevice = async () => {
+    if (!hwId.trim()) { toast.error("Enter a hardware ID"); return; }
+    setAddingDevice(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/devices/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hw_id: hwId.trim(), user_id: user?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(`Device ${hwId.trim()} linked!`);
+      setLinkedDevices((prev) => {
+        if (prev.some((d) => d.hw_id === hwId.trim())) return prev;
+        return [{ hw_id: hwId.trim(), linked_at: new Date().toISOString() }, ...prev];
+      });
+      setHwId("");
+    } catch (err) {
+      toast.error(err.message || "Failed to add device");
+    } finally {
+      setAddingDevice(false);
+    }
+  };
+
+  const handleDisconnect = async (targetHwId) => {
+    setDisconnecting(targetHwId);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/devices/disconnect`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user?.id, hw_id: targetHwId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(`Device ${targetHwId} disconnected`);
+      setLinkedDevices((prev) => prev.filter((d) => d.hw_id !== targetHwId));
+    } catch (err) {
+      toast.error(err.message || "Failed to disconnect device");
+    } finally {
+      setDisconnecting(null);
+    }
+  };
 
   // Stable reference — prevents GeofenceEditor re-render on GPS updates
   const handleGeofenceUpdate = useCallback((coords) => {
@@ -155,6 +213,74 @@ const GeofencePage = () => {
             </React.Fragment>
           ))}
         </div>
+      </motion.div>
+
+      {/* ── add device card ── */}
+      <motion.div
+        variants={cardVariants}
+        className="bg-white border border-gray-100 rounded-2xl shadow-sm px-5 py-4 space-y-3"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shrink-0">
+            <Cpu className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">Register Device</p>
+            <p className="text-xs text-gray-400">Enter the hardware ID printed on your ESP32</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="text"
+              value={hwId}
+              onChange={(e) => setHwId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddDevice()}
+              placeholder="Hardware ID"
+              className="w-40 text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <button
+              onClick={handleAddDevice}
+              disabled={addingDevice}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+            >
+              {addingDevice ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              Add
+            </button>
+          </div>
+        </div>
+
+        {linkedDevices.length > 0 && (
+          <div className="border-t border-gray-100 pt-3 space-y-2">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Linked Devices</p>
+            {linkedDevices.map((device) => (
+              <div
+                key={device.hw_id}
+                className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                    <Cpu size={14} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">{device.hw_id}</p>
+                    <p className="text-xs text-gray-400">
+                      Linked {new Date(device.linked_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDisconnect(device.hw_id)}
+                  disabled={disconnecting === device.hw_id}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 disabled:opacity-50 transition-colors"
+                >
+                  {disconnecting === device.hw_id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <X size={12} strokeWidth={2.5} />}
+                  Disconnect
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* ── main content: 70/30 grid ── */}
